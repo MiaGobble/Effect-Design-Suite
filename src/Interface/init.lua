@@ -79,6 +79,10 @@ function Interface:Init() : DockWidgetPluginGui
         RepeatEmitDelay = Scope:Value(Peek(States.RepeatEmitDelay)),
     }
 
+    local UtilValues = {
+        Scale = Scope:Value(1),
+    }
+
     local CoreProperties = VerticalCollapsibleSection {
         Name = "CoreProperties",
         --Size = UDim2.new(1, 0, 0, 50),
@@ -336,6 +340,59 @@ function Interface:Init() : DockWidgetPluginGui
                         end,
                     }
                 }
+            },
+        }
+    }
+
+    local Scale = VerticalCollapsibleSection {
+        Name = "Scale",
+        --Size = UDim2.new(1, 0, 0, 50),
+        Collapsed = true,
+        Padding = UDim.new(0, 10),
+        Text = "Scale",
+        Enabled = true,
+        Parent = Container,
+
+        [Children] = {
+            TextInput {
+                PlaceholderText = "Scale",
+                Enabled = States.IsEmittable,
+                LayoutOrder = 1,
+                Size = UDim2.new(1, 0, 0, 30),
+                Position = UDim2.fromScale(0, 0),
+
+                [Out "Text"] = UtilValues.Scale,
+            },
+
+            BaseButton {
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = "Apply Scale",
+                Enabled = States.IsEmittable,
+
+                Activated = function()
+                    local Scale = Peek(UtilValues.Scale)
+
+                    if not tonumber(Scale) then
+                        return
+                    end
+
+                    local SelectedInstances = Peek(States.CurrentlySelected)
+
+                    for _, Instance in SelectedInstances do
+                        if Instance:IsA("ParticleEmitter") then
+                            local OldSize = Instance.Size
+                            local NewSizeKeypoints = {}
+
+                            for _, Keypoint in OldSize.Keypoints do
+                                local NewKeypoint = NumberSequenceKeypoint.new(Keypoint.Time, Keypoint.Value * tonumber(Scale), Keypoint.Envelope * tonumber(Scale))
+
+                                table.insert(NewSizeKeypoints, NewKeypoint)
+                            end
+
+                            Instance.Size = NumberSequence.new(NewSizeKeypoints)
+                        end
+                    end
+                end,
             },
         }
     }
