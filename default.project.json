@@ -1,0 +1,18 @@
+{
+  "name": "Effect-Design-Suite",
+  "tree": {
+    "$className": "DataModel",
+
+    "ServerStorage": {
+      "EffectDesignerSuite": {
+        "$className": "Folder",
+        "$path": "src",
+
+        "Packages": {
+          "$className": "Folder",
+          "$path": "Packages"
+        }
+      }
+    }
+  }
+}
