@@ -1,6 +1,9 @@
 -- Constants
-local TICK_RATE = 1 / 2
-local AFK_TIMEOUT = 60
+local ACCEPTABLE_INSTANCE_TYPES = {
+    "ParticleEmitter",
+    "Sound",
+    "ModuleScript",
+}
 
 -- Services
 local RunService = game:GetService("RunService")
@@ -48,7 +51,30 @@ local function Init()
     end)
 
     SelectionService.SelectionChanged:Connect(function()
-        States.CurrentlySelected:set(SelectionService:Get())
+        local SelectedInstances = SelectionService:Get()
+        local ValidInstances = {}
+
+        for _, This : Instance in SelectedInstances do
+            if table.find(ACCEPTABLE_INSTANCE_TYPES, This.ClassName) then
+                table.insert(ValidInstances, This)
+                continue
+            end
+
+            for _, SubInstance : Instance in This:GetDescendants() do
+                if table.find(ACCEPTABLE_INSTANCE_TYPES, SubInstance.ClassName) then
+                    table.insert(ValidInstances, SubInstance)
+                end
+            end
+        end
+
+        States.CurrentlySelected:set(ValidInstances)
+        States.IsEditable:set(#ValidInstances == 1)
+        States.IsEmittable:set(#ValidInstances >= 1)
+        States.PrimarySelected:set(if #ValidInstances == 1 then ValidInstances[1] else nil)
+
+        if Peek(States.PrimarySelected) then
+            States.IsEffectModule:set(Peek(States.PrimarySelected):IsA("ModuleScript"))
+        end
     end)
 end
 

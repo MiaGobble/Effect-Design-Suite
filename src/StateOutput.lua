@@ -2,7 +2,7 @@ local StateOutput = {}
 
 -- Constants
 local SAVED_STATES = {
-
+    "RepeatEmitDelay"
 }
 
 local SETTING_INDEX_PRESET = "EffectDesignerSuiteSettings_"
