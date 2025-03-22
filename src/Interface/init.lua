@@ -397,6 +397,8 @@ function Interface:Init() : DockWidgetPluginGui
         }
     }
 
+    EmitUtils:SetWidget(MainWidget)
+
     MainWidget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
     return MainWidget

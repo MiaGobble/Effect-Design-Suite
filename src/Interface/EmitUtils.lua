@@ -14,6 +14,11 @@ local Peek = Fusion.peek
 
 -- Variables
 local RepeatEmitConnection = nil
+local Widget = nil
+
+function EmitUtils:SetWidget(...)
+    Widget = ...
+end
 
 function EmitUtils:EmitCurrent(ForcedInstances : {Instance}?)
     if not Peek(States.IsEmittable) and not ForcedInstances then
@@ -75,25 +80,29 @@ function EmitUtils:EmitCurrent(ForcedInstances : {Instance}?)
             task.delay(This:GetAttribute("EmitDelay") or 0, function()
                 This:Emit(This:GetAttribute("EmitCount") or 1)
 
-                if (This:GetAttribute("EmitSustain") or 0) > 0 then
+                if (This:GetAttribute("EmitDuration") or 0) > 0 then
                     This.Enabled = true
 
-                    task.delay(This:GetAttribute("EmitSustain"), function()
+                    task.delay(This:GetAttribute("EmitDuration"), function()
                         This.Enabled = false
                     end)
                 end
             end)
         elseif This:IsA("Sound") then
             task.delay(This:GetAttribute("EmitDelay") or 0, function()
-                if (This:GetAttribute("EmitSustain") or 0) > 0 then
-                    This:Play()
+                local NewSound = This:Clone()
+                NewSound.Parent = Widget
+                NewSound:Play()
 
-                    task.delay(This:GetAttribute("EmitSustain"), function()
-                        This:Stop()
+                if (This:GetAttribute("EmitDuration") or 0) > 0 then
+                    task.delay(This:GetAttribute("EmitDuration"), function()
+                        NewSound:Stop()
                     end)
-                else
-                    This:Play()
                 end
+
+                NewSound.Ended:Connect(function()
+                    NewSound:Destroy()
+                end)
             end)
         end
     end
