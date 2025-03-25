@@ -1,5 +1,20 @@
 local Interface = {}
 
+-- Constants
+local PARTICLE_PROPERTIES = {
+    "Size",
+    "Color",
+    "Transparency",
+    "Speed",
+    "Acceleration",
+    "Lifetime",
+    "Rate",
+    "SpreadAngle",
+    "LightEmission",
+    "LightInfluence",
+    "Texture",
+}
+
 -- Imports
 local Bin = script.Parent
 local Components = Bin:FindFirstChild("Components")
@@ -17,6 +32,7 @@ local VerticalCollapsibleSection = require(StudioComponents:FindFirstChild("Vert
 local Checkbox = require(StudioComponents:FindFirstChild("Checkbox"))
 local BaseButton = require(StudioComponents:FindFirstChild("BaseButton"))
 local Label = require(StudioComponents:FindFirstChild("Label"))
+local Dropdown = require(StudioComponents:FindFirstChild("Dropdown"))
 local States = require(Objects:FindFirstChild("States"))
 local Fusion = require(Packages:FindFirstChild("Fusion"))
 local Scope = Fusion.scoped(Fusion)
@@ -81,6 +97,11 @@ function Interface:Init() : DockWidgetPluginGui
 
     local UtilValues = {
         Scale = Scope:Value(1),
+    }
+
+    local PropertyValues = {
+        SelectedProperty = Scope:Value("Size"),
+        CopiedValue = Scope:Value(nil),
     }
 
     local CoreProperties = VerticalCollapsibleSection {
@@ -344,9 +365,97 @@ function Interface:Init() : DockWidgetPluginGui
         }
     }
 
+    local PropertyCopyPaste = VerticalCollapsibleSection {
+        Name = "PropertyCopyPaste",
+        Collapsed = true,
+        Padding = UDim.new(0, 10),
+        Text = "Copy/Paste Properties",
+        Enabled = true,
+        Parent = Container,
+        ZIndex = 5,
+
+        [Children] = {
+            TextInput {
+                Size = UDim2.new(1, 0, 0, 30),
+                PlaceholderText = "Property Name",
+                Enabled = States.IsEmittable,
+                Text = PropertyValues.SelectedProperty,
+                ZIndex = 10,
+
+                [OnEvent "Changed"] = function()
+                    local Text = Peek(PropertyValues.SelectedProperty)
+                    local LowerText = Text:lower()
+                    
+                    -- Find the first property that starts with the input text
+                    for _, Property in PARTICLE_PROPERTIES do
+                        if Property:lower():sub(1, #LowerText) == LowerText then
+                            PropertyValues.SelectedProperty:set(Property)
+                            break
+                        end
+                    end
+                end,
+            },
+
+            Scope:New "Frame" {
+                Name = "ButtonContainer",
+                Size = UDim2.new(1, 0, 0, 30),
+                BackgroundTransparency = 1,
+
+                [Children] = {
+                    BaseButton {
+                        Size = UDim2.fromScale(0.48, 1),
+                        Text = "Copy",
+                        Enabled = Scope:Computed(function(Use)
+                            local SelectedInstances = Use(States.CurrentlySelected)
+                            return Use(States.IsEmittable) and #SelectedInstances == 1
+                        end),
+                        Position = UDim2.fromScale(0, 0),
+
+                        Activated = function()
+                            local SelectedProperty = Peek(PropertyValues.SelectedProperty)
+                            local SelectedInstances = Peek(States.CurrentlySelected)
+                            
+                            if #SelectedInstances == 0 then return end
+                            
+                            -- Get the property value from the first selected instance
+                            local FirstInstance = SelectedInstances[1]
+                            if not FirstInstance:IsA("ParticleEmitter") then return end
+                            
+                            local Value = FirstInstance[SelectedProperty]
+                            if Value then
+                                PropertyValues.CopiedValue:set(Value)
+                            end
+                        end,
+                    },
+
+                    BaseButton {
+                        Size = UDim2.fromScale(0.48, 1),
+                        Text = "Paste",
+                        Enabled = States.IsEmittable,
+                        Position = UDim2.fromScale(0.52, 0),
+
+                        Activated = function()
+                            local SelectedProperty = Peek(PropertyValues.SelectedProperty)
+                            local SelectedInstances = Peek(States.CurrentlySelected)
+                            local CopiedValue = Peek(PropertyValues.CopiedValue)
+                            
+                            if not CopiedValue then return end
+                            
+                            -- Apply the copied value to all selected instances
+                            for _, Instance in SelectedInstances do
+                                if Instance:IsA("ParticleEmitter") then
+                                    Instance[SelectedProperty] = CopiedValue
+                                end
+                            end
+                        end,
+                    },
+                }
+            },
+        }
+    }
+
     local Scale = VerticalCollapsibleSection {
         Name = "Scale",
-        --Size = UDim2.new(1, 0, 0, 50),
         Collapsed = true,
         Padding = UDim.new(0, 10),
         Text = "Scale",

@@ -6,11 +6,9 @@ local ACCEPTABLE_INSTANCE_TYPES = {
 }
 
 -- Services
-local RunService = game:GetService("RunService")
 local SelectionService = game:GetService("Selection") :: Selection
-local StudioService = game:GetService("StudioService")
 local RunService = game:GetService("RunService")
-local ServerStorage = game:GetService("ServerStorage")
+
 
 -- Imports
 local Components = script.Parent:FindFirstChild("Components")
