@@ -2,6 +2,7 @@ local EmitUtils = {}
 
 -- Services
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
 -- Imports
 local Bin = script.Parent.Parent
@@ -15,6 +16,42 @@ local Peek = Fusion.peek
 -- Variables
 local RepeatEmitConnection = nil
 local Widget = nil
+
+-- Helper function to calculate distance-based volume
+local function CalculateVolume(Sound: Sound, ParentInstance: Instance): number
+    local Camera = workspace.CurrentCamera
+    if not Camera then return 1 end
+    
+    local ParentPosition = if ParentInstance:IsA("Attachment") 
+        then ParentInstance.WorldPosition 
+        else ParentInstance.Position
+    
+    local Distance = (ParentPosition - Camera.CFrame.Position).Magnitude
+    
+    -- Get rolloff properties from sound
+    local MinDistance = Sound.RollOffMinDistance
+    local MaxDistance = Sound.RollOffMaxDistance
+    local RolloffMode = Sound.RollOffMode
+
+    -- Calculate volume based on distance and rolloff mode
+    if Distance <= MinDistance then
+        return 1
+    elseif Distance >= MaxDistance then
+        return 0
+    end
+    
+    local Volume
+    
+    if RolloffMode == Enum.RollOffMode.Linear then
+        Volume = 1 - ((Distance - MinDistance) / (MaxDistance - MinDistance))
+    elseif RolloffMode == Enum.RollOffMode.Inverse then
+        Volume = math.clamp(MinDistance / math.max(Distance, MinDistance), 0, 1)
+    else -- Default to linear
+        Volume = 1 - ((Distance - MinDistance) / (MaxDistance - MinDistance))
+    end
+    
+    return Volume
+end
 
 function EmitUtils:SetWidget(...)
     Widget = ...
@@ -92,6 +129,16 @@ function EmitUtils:EmitCurrent(ForcedInstances : {Instance}?)
             task.delay(This:GetAttribute("EmitDelay") or 0, function()
                 local NewSound = This:Clone()
                 NewSound.Parent = Widget
+                
+                -- Set initial volume based on distance
+                if This.Parent and (This.Parent:IsA("BasePart") or This.Parent:IsA("Attachment")) then
+                    print("Original volume:", NewSound.Volume)
+                    local Attenuation = CalculateVolume(This, This.Parent)
+                    print("Attenuation factor:", Attenuation)
+                    NewSound.Volume *= Attenuation
+                    print("Final volume:", NewSound.Volume)
+                end
+                
                 NewSound:Play()
 
                 if (This:GetAttribute("EmitDuration") or 0) > 0 then
