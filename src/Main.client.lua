@@ -3,6 +3,8 @@ local ACCEPTABLE_INSTANCE_TYPES = {
     "ParticleEmitter",
     "Sound",
     "ModuleScript",
+    "StringValue",
+    "Trail",
 }
 
 -- Services

@@ -3,6 +3,7 @@ local EmitUtils = {}
 -- Services
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 -- Imports
 local Bin = script.Parent.Parent
@@ -16,6 +17,7 @@ local Peek = Fusion.peek
 -- Variables
 local RepeatEmitConnection = nil
 local Widget = nil
+local ActiveTasks = {}
 
 -- Helper function to calculate distance-based volume
 local function CalculateVolume(Sound: Sound, ParentInstance: Instance): number
@@ -53,6 +55,49 @@ local function CalculateVolume(Sound: Sound, ParentInstance: Instance): number
     return Volume
 end
 
+-- Function to animate tweens
+local function AnimateTween(ParentAttachment : Attachment)
+    local Mover = ParentAttachment:FindFirstChild("Mover")
+
+    if not Mover then
+        return
+    end
+
+    local Origin = ParentAttachment:FindFirstChild("Origin")
+
+    if not Origin then
+        return
+    end
+
+    local Target = ParentAttachment:FindFirstChild("Target")
+
+    if not Target then
+        return
+    end
+    
+    local AnimationIndicator = ParentAttachment:FindFirstChild("AnimationIndicator")
+
+    if not AnimationIndicator then
+        return
+    end
+
+    local TweenStyle = TweenInfo.new(
+        AnimationIndicator.Duration.Value,
+        Enum.EasingStyle[AnimationIndicator.TweenStyle.Value],
+        Enum.EasingDirection[AnimationIndicator.TweenDirection.Value],
+        AnimationIndicator.RepeatCount.Value,
+        AnimationIndicator.Reverses.Value,
+        AnimationIndicator.DelayTime.Value
+    )
+
+    local Tween = TweenService:Create(Mover, TweenStyle, {
+        CFrame = Target.CFrame
+    })
+
+    Mover.CFrame = Origin.CFrame
+    Tween:Play()
+end
+
 function EmitUtils:SetWidget(...)
     Widget = ...
 end
@@ -63,6 +108,12 @@ function EmitUtils:EmitCurrent(ForcedInstances : {Instance}?)
     end
 
     local SelectedInstances = ForcedInstances or Peek(States.CurrentlySelected)
+
+    for _, Task in ActiveTasks do
+        task.cancel(Task)
+    end
+
+    ActiveTasks = {}
 
     for _, This : Instance in SelectedInstances do
         if not This.Parent then
@@ -132,11 +183,8 @@ function EmitUtils:EmitCurrent(ForcedInstances : {Instance}?)
                 
                 -- Set initial volume based on distance
                 if This.Parent and (This.Parent:IsA("BasePart") or This.Parent:IsA("Attachment")) then
-                    print("Original volume:", NewSound.Volume)
                     local Attenuation = CalculateVolume(This, This.Parent)
-                    print("Attenuation factor:", Attenuation)
                     NewSound.Volume *= Attenuation
-                    print("Final volume:", NewSound.Volume)
                 end
                 
                 NewSound:Play()
@@ -151,6 +199,18 @@ function EmitUtils:EmitCurrent(ForcedInstances : {Instance}?)
                     NewSound:Destroy()
                 end)
             end)
+        elseif This:IsA("Trail") then
+            This.Enabled = false
+
+            table.insert(ActiveTasks, task.delay(This:GetAttribute("EmitDelay") or 0, function()
+                This.Enabled = true
+
+                task.delay(This:GetAttribute("EmitDuration") or 0, function()
+                    This.Enabled = false
+                end)
+            end))
+        elseif This:IsA("StringValue") and This.Name == "AnimationIndicator" then
+            AnimateTween(This.Parent)
         end
     end
 end
