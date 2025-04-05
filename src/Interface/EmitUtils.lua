@@ -4,11 +4,13 @@ local EmitUtils = {}
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
 
 -- Imports
 local Bin = script.Parent.Parent
 local Objects = Bin:FindFirstChild("Objects")
 local Packages = Bin:FindFirstChild("Packages")
+local Bezier = require(Bin.PlaybackModules:FindFirstChild("Bezier"))
 local States = require(Objects:FindFirstChild("States"))
 local Fusion = require(Packages:FindFirstChild("Fusion"))
 local Scope = Fusion.scoped(Fusion)
@@ -94,6 +96,100 @@ local function AnimateTween(ParentAttachment : Attachment)
         CFrame = Target.CFrame
     })
 
+    Mover.CFrame = Origin.CFrame
+    Tween:Play()
+end
+
+-- Function to animate bezier tweens
+local function AnimateBezier(ParentAttachment : Attachment)
+    local Mover = ParentAttachment:FindFirstChild("Mover")
+
+    if not Mover then
+        return
+    end
+
+    local Origin = ParentAttachment:FindFirstChild("Origin")
+
+    if not Origin then
+        return
+    end
+    
+    local Target = ParentAttachment:FindFirstChild("Target")
+
+    if not Target then
+        return
+    end
+    
+    -- local Midpoint = ParentAttachment:FindFirstChild("Midpoint")
+
+    -- if not Midpoint then
+    --     return
+    -- end
+
+    local Midpoints = {ParentAttachment:FindFirstChild("Midpoint")}
+
+    for _, Midpoint in ParentAttachment:GetChildren() do
+        if not Midpoint:IsA("Attachment") then
+            continue
+        end
+
+        local MidpointIndex = Midpoint.Name:gsub("Midpoint", "")
+
+        if MidpointIndex and tonumber(MidpointIndex) then
+            Midpoints[tonumber(MidpointIndex)] = Midpoint
+        end
+    end
+
+    local AnimationIndicator = ParentAttachment:FindFirstChild("AnimationIndicator")
+
+    if not AnimationIndicator then
+        return
+    end
+
+    local Positions = {}
+
+    table.insert(Positions, Origin.WorldPosition)
+
+    for _, Midpoint in Midpoints do
+        table.insert(Positions, Midpoint.WorldPosition)
+    end
+
+    table.insert(Positions, Target.WorldPosition)
+
+    local BezierCurve = Bezier.new(unpack(Positions))
+
+    local TweenStyle = TweenInfo.new(
+        AnimationIndicator.Duration.Value,
+        Enum.EasingStyle[AnimationIndicator.TweenStyle.Value],
+        Enum.EasingDirection[AnimationIndicator.TweenDirection.Value],
+        AnimationIndicator.RepeatCount.Value,
+        AnimationIndicator.Reverses.Value,
+        AnimationIndicator.DelayTime.Value
+    )
+
+    if Mover:FindFirstChild("ReferenceValue") then
+        Mover:FindFirstChild("ReferenceValue"):Destroy()
+    end
+
+    local ReferenceValue = Instance.new("NumberValue")
+    ReferenceValue.Value = 0
+    ReferenceValue.Name = "ReferenceValue"
+    ReferenceValue.Parent = Mover
+
+    local Tween = TweenService:Create(ReferenceValue, TweenStyle, {
+        Value = 1
+    })
+
+    Tween.Completed:Connect(function()
+        ReferenceValue:Destroy()
+    end)
+
+    ReferenceValue.Changed:Connect(function()
+        local Position = BezierCurve:CalculatePositionAt(ReferenceValue.Value)
+        Mover.WorldPosition = Position
+    end)
+
+    --Debris:AddItem(ReferenceValue, AnimationIndicator.Duration.Value)
     Mover.CFrame = Origin.CFrame
     Tween:Play()
 end
@@ -210,7 +306,11 @@ function EmitUtils:EmitCurrent(ForcedInstances : {Instance}?)
                 end)
             end))
         elseif This:IsA("StringValue") and This.Name == "AnimationIndicator" then
-            AnimateTween(This.Parent)
+            if This.Value == "Tween" then
+                AnimateTween(This.Parent)
+            elseif This.Value == "Bezier" then
+                AnimateBezier(This.Parent)
+            end
         end
     end
 end
