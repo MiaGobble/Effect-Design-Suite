@@ -15,6 +15,85 @@ local PARTICLE_PROPERTIES = {
     "Texture",
 }
 
+-- Helper Functions
+local function ApplyMathOperation(Value: number, Property: string, Operation: string, Instances: {Instance})
+    if not Value or Property == "" then
+        return
+    end
+
+    for _, Instance in Instances do
+        if not (Instance:IsA("ParticleEmitter") and Instance[Property]) then
+            continue
+        end
+
+        local PropertyType = typeof(Instance[Property])
+        
+        if PropertyType == "NumberSequence" then
+            local OldSequence = Instance[Property]
+            local NewKeypoints = {}
+
+            for _, Keypoint in OldSequence.Keypoints do
+                local NewValue, NewEnvelope
+                
+                if Operation == "add" then
+                    NewValue = Keypoint.Value + Value
+                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope + Value)
+                elseif Operation == "subtract" then
+                    NewValue = Keypoint.Value - Value
+                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope - Value)
+                elseif Operation == "multiply" then
+                    NewValue = Keypoint.Value * Value
+                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope * Value)
+                elseif Operation == "divide" then
+                    if Value == 0 then continue end
+                    NewValue = Keypoint.Value / Value
+                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope / Value)
+                end
+
+                table.insert(NewKeypoints, NumberSequenceKeypoint.new(
+                    Keypoint.Time,
+                    NewValue,
+                    NewEnvelope
+                ))
+            end
+
+            Instance[Property] = NumberSequence.new(NewKeypoints)
+        elseif PropertyType == "NumberRange" then
+            local OldMin = Instance[Property].Min
+            local OldMax = Instance[Property].Max
+            local NewMin, NewMax
+            
+            if Operation == "add" then
+                NewMin = OldMin + Value
+                NewMax = OldMax + Value
+            elseif Operation == "subtract" then
+                NewMin = OldMin - Value
+                NewMax = OldMax - Value
+            elseif Operation == "multiply" then
+                NewMin = OldMin * Value
+                NewMax = OldMax * Value
+            elseif Operation == "divide" then
+                if Value == 0 then continue end
+                NewMin = OldMin / Value
+                NewMax = OldMax / Value
+            end
+
+            Instance[Property] = NumberRange.new(NewMin, NewMax)
+        elseif PropertyType == "number" then
+            if Operation == "add" then
+                Instance[Property] = Instance[Property] + Value
+            elseif Operation == "subtract" then
+                Instance[Property] = Instance[Property] - Value
+            elseif Operation == "multiply" then
+                Instance[Property] = Instance[Property] * Value
+            elseif Operation == "divide" then
+                if Value == 0 then continue end
+                Instance[Property] = Instance[Property] / Value
+            end
+        end
+    end
+end
+
 -- Services
 local Selection = game:GetService("Selection")
 
@@ -98,7 +177,8 @@ function Interface:Init() : DockWidgetPluginGui
     }
 
     local UtilValues = {
-        Scale = Scope:Value(1),
+        MathValue = Scope:Value(""),
+        SelectedProperty = Scope:Value("Size"),
     }
 
     local PropertyValues = {
@@ -456,53 +536,92 @@ function Interface:Init() : DockWidgetPluginGui
         }
     }
 
-    local Scale = VerticalCollapsibleSection {
-        Name = "Scale",
+    local MathOperations = VerticalCollapsibleSection {
+        Name = "MathOperations",
         Collapsed = true,
         Padding = UDim.new(0, 10),
-        Text = "Scale",
+        Text = "Math Operations",
         Enabled = true,
         Parent = Container,
 
         [Children] = {
             TextInput {
-                PlaceholderText = "Scale",
+                PlaceholderText = "Enter a number",
                 Enabled = States.IsEmittable,
                 LayoutOrder = 1,
                 Size = UDim2.new(1, 0, 0, 30),
                 Position = UDim2.fromScale(0, 0),
 
-                [Out "Text"] = UtilValues.Scale,
+                [Out "Text"] = UtilValues.MathValue,
+            },
+
+            TextInput {
+                PlaceholderText = "Property (e.g. Size, Speed)",
+                Enabled = States.IsEmittable,
+                LayoutOrder = 2,
+                Size = UDim2.new(1, 0, 0, 30),
+                Position = UDim2.fromScale(0, 0),
+
+                [Out "Text"] = UtilValues.SelectedProperty,
             },
 
             BaseButton {
                 Size = UDim2.new(1, 0, 0, 30),
-                Text = "Apply Scale",
+                Text = "Add",
+                LayoutOrder = 3,
                 Enabled = States.IsEmittable,
 
                 Activated = function()
-                    local Scale = Peek(UtilValues.Scale)
-
-                    if not tonumber(Scale) then
-                        return
-                    end
-
+                    local Value = tonumber(Peek(UtilValues.MathValue))
+                    local Property = Peek(UtilValues.SelectedProperty)
                     local SelectedInstances = Peek(States.CurrentlySelected)
 
-                    for _, Instance in SelectedInstances do
-                        if Instance:IsA("ParticleEmitter") then
-                            local OldSize = Instance.Size
-                            local NewSizeKeypoints = {}
+                    ApplyMathOperation(Value, Property, "add", SelectedInstances)
+                end,
+            },
 
-                            for _, Keypoint in OldSize.Keypoints do
-                                local NewKeypoint = NumberSequenceKeypoint.new(Keypoint.Time, Keypoint.Value * tonumber(Scale), Keypoint.Envelope * tonumber(Scale))
+            BaseButton {
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = "Subtract",
+                LayoutOrder = 4,
+                Enabled = States.IsEmittable,
 
-                                table.insert(NewSizeKeypoints, NewKeypoint)
-                            end
+                Activated = function()
+                    local Value = tonumber(Peek(UtilValues.MathValue))
+                    local Property = Peek(UtilValues.SelectedProperty)
+                    local SelectedInstances = Peek(States.CurrentlySelected)
 
-                            Instance.Size = NumberSequence.new(NewSizeKeypoints)
-                        end
-                    end
+                    ApplyMathOperation(Value, Property, "subtract", SelectedInstances)
+                end,
+            },
+
+            BaseButton {
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = "Multiply",
+                LayoutOrder = 5,
+                Enabled = States.IsEmittable,
+
+                Activated = function()
+                    local Value = tonumber(Peek(UtilValues.MathValue))
+                    local Property = Peek(UtilValues.SelectedProperty)
+                    local SelectedInstances = Peek(States.CurrentlySelected)
+
+                    ApplyMathOperation(Value, Property, "multiply", SelectedInstances)
+                end,
+            },
+
+            BaseButton {
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = "Divide",
+                LayoutOrder = 6,
+                Enabled = States.IsEmittable,
+
+                Activated = function()
+                    local Value = tonumber(Peek(UtilValues.MathValue))
+                    local Property = Peek(UtilValues.SelectedProperty)
+                    local SelectedInstances = Peek(States.CurrentlySelected)
+
+                    ApplyMathOperation(Value, Property, "divide", SelectedInstances)
                 end,
             },
         }
