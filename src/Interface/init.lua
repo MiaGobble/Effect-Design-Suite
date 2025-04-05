@@ -15,6 +15,9 @@ local PARTICLE_PROPERTIES = {
     "Texture",
 }
 
+-- Services
+local Selection = game:GetService("Selection")
+
 -- Imports
 local Bin = script.Parent
 local Components = Bin:FindFirstChild("Components")
@@ -32,7 +35,6 @@ local VerticalCollapsibleSection = require(StudioComponents:FindFirstChild("Vert
 local Checkbox = require(StudioComponents:FindFirstChild("Checkbox"))
 local BaseButton = require(StudioComponents:FindFirstChild("BaseButton"))
 local Label = require(StudioComponents:FindFirstChild("Label"))
-local Dropdown = require(StudioComponents:FindFirstChild("Dropdown"))
 local States = require(Objects:FindFirstChild("States"))
 local Fusion = require(Packages:FindFirstChild("Fusion"))
 local Scope = Fusion.scoped(Fusion)
@@ -503,6 +505,114 @@ function Interface:Init() : DockWidgetPluginGui
                     end
                 end,
             },
+        }
+    }
+
+    local AnimationIndicators = VerticalCollapsibleSection {
+        Name = "AnimationIndicators",
+        Collapsed = true,
+        Padding = UDim.new(0, 10),
+        Text = "Animation Indicators",
+        Enabled = true,
+        Parent = Container,
+
+        [Children] = {
+            BaseButton {
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = "Create Bezier Animation",
+                Enabled = Scope:Computed(function(Use)
+                    local SelectedInstances = Use(States.RawSelection)
+
+                    return #Use(SelectedInstances) > 0
+                end),
+
+                Activated = function()
+                    local SelectedInstances = Peek(States.RawSelection)
+
+                    if #SelectedInstances == 0 then
+                        return
+                    end 
+
+                    local Indicator = EmitUtils:CreateNewAnimationIndicator(SelectedInstances[1], "Bezier")
+                    Selection:Set({Indicator})
+                end,
+            },
+
+            BaseButton {
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = "Create Tween Animation",
+                Enabled = Scope:Computed(function(Use)
+                    local SelectedInstances = Use(States.RawSelection)
+
+                    return #Use(SelectedInstances) > 0
+                end),
+
+                Activated = function()
+                    local SelectedInstances = Peek(States.RawSelection)
+
+                    if #SelectedInstances == 0 then
+                        return
+                    end 
+
+                    local Indicator = EmitUtils:CreateNewAnimationIndicator(SelectedInstances[1], "Tween")
+                    Selection:Set({Indicator})
+                end,
+            },
+        }
+    }
+
+    local ProgrammerModules = VerticalCollapsibleSection {
+        Name = "ProgrammerModules",
+        Collapsed = true,
+        Padding = UDim.new(0, 10),
+        Text = "Programmer Resources",
+        Enabled = true,
+        Parent = Container,
+
+        [Children] = {
+            BaseButton {
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = "Insert PlayEffect Module",
+                Enabled = Scope:Computed(function(Use)
+                    local SelectedInstances = Use(States.RawSelection)
+
+                    return #Use(SelectedInstances) > 0
+                end),
+
+                Activated = function()
+                    local SelectedInstances = Peek(States.RawSelection)
+
+                    if #SelectedInstances == 0 then
+                        return
+                    end
+
+                    local PlayEffectModule = Bin.PlaybackModules.PlayEffect:Clone()
+                    PlayEffectModule.Parent = SelectedInstances[1]
+                    Selection:Set({PlayEffectModule})
+                end,
+            },
+
+            BaseButton {
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = "Insert Effect Module Template",
+                Enabled = Scope:Computed(function(Use)
+                    local SelectedInstances = Use(States.RawSelection)
+
+                    return #Use(SelectedInstances) > 0
+                end),
+
+                Activated = function()
+                    local SelectedInstances = Peek(States.RawSelection)
+
+                    if #SelectedInstances == 0 then
+                        return
+                    end
+
+                    local EffectModuleTemplate = Bin.PlaybackModules.EffectModuleTemplate:Clone()
+                    EffectModuleTemplate.Parent = SelectedInstances[1]
+                    Selection:Set({EffectModuleTemplate})
+                end,
+            }
         }
     }
 

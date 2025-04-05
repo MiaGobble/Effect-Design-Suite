@@ -71,6 +71,7 @@ local function Init()
         States.IsEditable:set(#ValidInstances == 1)
         States.IsEmittable:set(#ValidInstances >= 1)
         States.PrimarySelected:set(if #ValidInstances == 1 then ValidInstances[1] else nil)
+        States.RawSelection:set(SelectedInstances or {})
 
         if Peek(States.PrimarySelected) then
             States.IsEffectModule:set(Peek(States.PrimarySelected):IsA("ModuleScript"))

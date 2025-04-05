@@ -12,6 +12,9 @@ return {
     -- The instances the current user has selected
     CurrentlySelected = Scope:Value({}),
 
+    -- All selection
+    RawSelection = Scope:Value({}),
+
     -- Whether in an editable state
     IsEditable = Scope:Value(false),
 
