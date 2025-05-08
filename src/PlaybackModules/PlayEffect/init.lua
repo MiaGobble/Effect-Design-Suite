@@ -316,10 +316,8 @@ local function PlayEffect(This : Instance, Bin : Instance) : number?
         if (This:GetAttribute("EmitDuration") or 0) > 0 then
             TotalDuration = This:GetAttribute("EmitDuration") + (This:GetAttribute("EmitDelay") or 0)
         else
-            TotalDuration = This.TimeLength + (This:GetAttribute("EmitDelay") or 0)
+            TotalDuration = (This.TimeLength / This.PlaybackSpeed) + (This:GetAttribute("EmitDelay") or 0)
         end
-
-        TotalDuration /= This.PlaybackSpeed
 
         WidgetParentPayload = {NewSound, TotalDuration}
     elseif This:IsA("Trail") then
