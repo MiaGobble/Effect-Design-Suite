@@ -319,6 +319,8 @@ local function PlayEffect(This : Instance, Bin : Instance) : number?
             TotalDuration = This.TimeLength + (This:GetAttribute("EmitDelay") or 0)
         end
 
+        TotalDuration /= This.PlaybackSpeed
+
         WidgetParentPayload = {NewSound, TotalDuration}
     elseif This:IsA("Trail") then
         This.Enabled = false
