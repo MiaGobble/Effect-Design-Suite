@@ -33,7 +33,7 @@ local ThisToolbar = Toolbar {
 local MainButton = ToolbarButton {
     ToolTip = "",
     Name = "Open",
-    Image = "rbxassetid://14364353606",
+    Image = "rbxassetid://140043496156959",
     Toolbar = ThisToolbar,
 } :: PluginToolbarButton
 

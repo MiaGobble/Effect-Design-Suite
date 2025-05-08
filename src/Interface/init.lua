@@ -15,6 +15,58 @@ local PARTICLE_PROPERTIES = {
     "Texture",
 }
 
+-- Services
+local Selection = game:GetService("Selection")
+
+-- Imports
+local Bin = script.Parent
+local Components = Bin:FindFirstChild("Components")
+local Objects = Bin:FindFirstChild("Objects")
+local Packages = Bin:FindFirstChild("Packages")
+local IconicDesign = Components:FindFirstChild("IconicDesign")
+local PluginComponents = IconicDesign:FindFirstChild("PluginComponents")
+local StudioComponents = IconicDesign:FindFirstChild("StudioComponents")
+local EmitUtils = require(script.EmitUtils)
+local AssetUtils = require(script.AssetUtils)
+local Widget = require(PluginComponents:FindFirstChild("Widget"))
+local Background = require(StudioComponents:FindFirstChild("Background"))
+local ScrollFrame = require(StudioComponents:FindFirstChild("ScrollFrame"))
+local TextInput = require(StudioComponents:FindFirstChild("TextInput"))
+local VerticalCollapsibleSection = require(StudioComponents:FindFirstChild("VerticalCollapsibleSection"))
+local Checkbox = require(StudioComponents:FindFirstChild("Checkbox"))
+local Dropdown = require(StudioComponents:FindFirstChild("Dropdown"))
+local BaseButton = require(StudioComponents:FindFirstChild("BaseButton"))
+local Slider = require(StudioComponents:FindFirstChild("Slider"))
+local Label = require(StudioComponents:FindFirstChild("Label"))
+local States = require(Objects:FindFirstChild("States"))
+local Fusion = require(Packages:FindFirstChild("Fusion"))
+local Scope = Fusion.scoped(Fusion)
+local Peek = Fusion.peek
+local Children = Fusion.Children
+local OnEvent = Fusion.OnEvent
+local Out = Fusion.Out
+
+-- Variables
+local MainWidget = Widget {
+    Id = "EffectDesignerSuite",
+    Name = "Effect Designer Suite",
+    InitialDockTo = Enum.InitialDockState.Left,
+    InitialEnabled = false,
+    ForceInitialEnabled = false,
+    FloatingSize = Vector2.new(300, 300),
+    MinimumSize = Vector2.new(300, 300),
+}
+
+local LibraryWidget = Widget {
+    Id = "EffectDesignerSuiteLibrary",
+    Name = "Asset Library",
+    InitialDockTo = Enum.InitialDockState.Float,
+    InitialEnabled = false,
+    ForceInitialEnabled = false,
+    FloatingSize = Vector2.new(800, 300),
+    MinimumSize = Vector2.new(800, 300),
+}
+
 -- Helper Functions
 local function ApplyMathOperation(Value: number, Property: string, Operation: string, Instances: {Instance})
     if not Value or Property == "" then
@@ -94,44 +146,105 @@ local function ApplyMathOperation(Value: number, Property: string, Operation: st
     end
 end
 
--- Services
-local Selection = game:GetService("Selection")
+local function InitLibrary()
+    local MainBackground = Background {
+        Name = "Background",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5),
+        Size = UDim2.new(1, 0, 1, 0),
+        ZIndex = 1,
+        Parent = LibraryWidget  ,
+    }
 
--- Imports
-local Bin = script.Parent
-local Components = Bin:FindFirstChild("Components")
-local Objects = Bin:FindFirstChild("Objects")
-local Packages = Bin:FindFirstChild("Packages")
-local IconicDesign = Components:FindFirstChild("IconicDesign")
-local PluginComponents = IconicDesign:FindFirstChild("PluginComponents")
-local StudioComponents = IconicDesign:FindFirstChild("StudioComponents")
-local EmitUtils = require(script.EmitUtils)
-local Widget = require(PluginComponents:FindFirstChild("Widget"))
-local Background = require(StudioComponents:FindFirstChild("Background"))
-local ScrollFrame = require(StudioComponents:FindFirstChild("ScrollFrame"))
-local TextInput = require(StudioComponents:FindFirstChild("TextInput"))
-local VerticalCollapsibleSection = require(StudioComponents:FindFirstChild("VerticalCollapsibleSection"))
-local Checkbox = require(StudioComponents:FindFirstChild("Checkbox"))
-local BaseButton = require(StudioComponents:FindFirstChild("BaseButton"))
-local Label = require(StudioComponents:FindFirstChild("Label"))
-local States = require(Objects:FindFirstChild("States"))
-local Fusion = require(Packages:FindFirstChild("Fusion"))
-local Scope = Fusion.scoped(Fusion)
-local Peek = Fusion.peek
-local Children = Fusion.Children
-local OnEvent = Fusion.OnEvent
-local Out = Fusion.Out
+    local Sidebar = ScrollFrame({
+        ScrollBarThickness = 12,
+        CanvasScaleConstraint = Enum.ScrollingDirection.X,
+        Size = UDim2.new(0.3, 0, 1, 0),
+        
+        UIPadding = Scope:New "UIPadding" {
+            PaddingTop = UDim.new(0, 10),
+            PaddingBottom = UDim.new(0, 10),
+            PaddingLeft = UDim.new(0, 30),
+            PaddingRight = UDim.new(0, 30),
+        },
 
--- Variables
-local MainWidget = Widget {
-    Id = "EffectDesignerSuite",
-    Name = "Effect Designer Suite",
-    InitialDockTo = Enum.InitialDockState.Left,
-    InitialEnabled = false,
-    ForceInitialEnabled = false,
-    FloatingSize = Vector2.new(300, 300),
-    MinimumSize = Vector2.new(300, 300),
-}
+        UILayout = Scope:New "UIListLayout" {
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            FillDirection = Enum.FillDirection.Vertical,
+            VerticalAlignment = Enum.VerticalAlignment.Top,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            Padding = UDim.new(0, 10),
+        },
+
+        ZIndex = 2,
+        Parent = LibraryWidget,
+    }):FindFirstChild("Canvas")
+
+    Sidebar.BackgroundTransparency = 0.75
+    Sidebar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+
+    local SelectedCategory = Scope:Value("")
+    local Assets = Scope:Value({})
+
+    local Content = ScrollFrame({
+        ScrollBarThickness = 12,
+        CanvasScaleConstraint = Enum.ScrollingDirection.X,
+        Position = UDim2.fromScale(0.3, 0),
+        Size = UDim2.new(0.7, 0, 1, 0),
+        
+        UIPadding = Scope:New "UIPadding" {
+            PaddingTop = UDim.new(0, 10),
+            PaddingBottom = UDim.new(0, 10),
+            PaddingLeft = UDim.new(0, 30),
+            PaddingRight = UDim.new(0, 30),
+        },
+
+        -- UILayout = Scope:New "UIListLayout" {
+        --     SortOrder = Enum.SortOrder.LayoutOrder,
+        --     FillDirection = Enum.FillDirection.Vertical,
+        --     VerticalAlignment = Enum.VerticalAlignment.Top,
+        --     HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        --     Padding = UDim.new(0, 10),
+        -- },
+
+        UILayout = Scope:New "UIGridLayout" {
+            CellSize = UDim2.new(0, 60, 0, 60),
+            CellPadding = UDim2.new(0, 30, 0, 30),
+        },
+
+        ZIndex = 2,
+        Parent = LibraryWidget,
+
+        [Children] = {
+            Scope:ForValues(Assets, function(Use, Asset)
+                local Frame = Scope:New "Frame" {
+                    Name = Asset.Name,
+                }
+                
+                return Frame
+            end)
+        }
+    }):FindFirstChild("Canvas")
+
+    local CategoryDropdown = Dropdown {
+        Name = "CategoryDropdown",
+        Size = UDim2.new(1, 0, 0, 30),
+        Position = UDim2.fromScale(0, 0),
+        AnchorPoint = Vector2.new(0, 0),
+        ZIndex = 3,
+        Enabled = true,
+        Parent = Sidebar,
+        Value = SelectedCategory,
+        Options = Scope:Value(AssetUtils:GetAllAssetCategories()),
+
+        OnSelected = function(SelectedOption)
+            --SelectedCategory:set(SelectedOption)
+            Assets:set(AssetUtils:GetAssetsByCategory(SelectedOption))
+        end,
+    }
+
+
+end
 
 function Interface:Init() : DockWidgetPluginGui
     local MainBackground = Background {
@@ -177,8 +290,11 @@ function Interface:Init() : DockWidgetPluginGui
     }
 
     local UtilValues = {
-        MathValue = Scope:Value(""),
+        MathValue = Scope:Value(3),
+        MathValueRaw = Scope:Value("3"),
         SelectedProperty = Scope:Value("Size"),
+        MathSliderMin = Scope:Value(1),
+        MathSliderMax = Scope:Value(5),
     }
 
     local PropertyValues = {
@@ -188,7 +304,6 @@ function Interface:Init() : DockWidgetPluginGui
 
     local CoreProperties = VerticalCollapsibleSection {
         Name = "CoreProperties",
-        --Size = UDim2.new(1, 0, 0, 50),
         Collapsed = false,
         Padding = UDim.new(0, 10),
         Text = "Core Properties",
@@ -217,26 +332,25 @@ function Interface:Init() : DockWidgetPluginGui
                                 return ""
                             end
         
-                            return tostring(CurrentInstance:GetAttribute("EmitCount") or 0)
+                            return tostring(CurrentInstance:GetAttribute("EmitCount") or "")
                         end),
-        
-                        PlaceholderText = "Emit Count",
 
                         Enabled = Scope:Computed(function(Use)
-                            return Use(States.IsEditable) and not Use(States.IsEffectModule)
+                            --return Use(States.IsEditable) and not Use(States.IsEffectModule)
+                            return #Use(States.CurrentlySelected) > 0
                         end),
 
                         LayoutOrder = 1,
                         Size = UDim2.fromScale(0.7, 1),
                         Position = UDim2.fromScale(0.3, 0),
+                        PlaceholderText = "0",
 
                         [Out "Text"] = CorePropertyValues.EmitCount,
 
-                        [OnEvent "Changed"] = function()
-                            local CurrentInstance = Peek(States.PrimarySelected)
-                            local IsEffectModule = Peek(States.IsEffectModule)
-        
-                            if not CurrentInstance or IsEffectModule then
+                        [OnEvent "FocusLost"] = function()
+                            local CurrentlySelected = Peek(States.CurrentlySelected)
+
+                            if #CurrentlySelected == 0 then
                                 return
                             end
 
@@ -247,7 +361,9 @@ function Interface:Init() : DockWidgetPluginGui
                                 return
                             end
         
-                            CurrentInstance:SetAttribute("EmitCount", Number)
+                            for _, Instance in CurrentlySelected do
+                                Instance:SetAttribute("EmitCount", Number)
+                            end
                         end,
                     },
                 }
@@ -274,21 +390,26 @@ function Interface:Init() : DockWidgetPluginGui
                                 return ""
                             end
         
-                            return tostring(CurrentInstance:GetAttribute("EmitDelay") or 0)
+                            return tostring(CurrentInstance:GetAttribute("EmitDelay") or "")
                         end),
         
-                        PlaceholderText = "Emit Delay",
-                        Enabled = States.IsEditable,
+                        PlaceholderText = "0",
+
+                        Enabled = Scope:Computed(function(Use)
+                            --  return Use(States.IsEditable) and not Use(States.IsEffectModule)
+                            return #Use(States.CurrentlySelected) > 0
+                        end),
+
                         LayoutOrder = 1,
                         Size = UDim2.fromScale(0.7, 1),
                         Position = UDim2.fromScale(0.3, 0),
 
                         [Out "Text"] = CorePropertyValues.EmitDelay,
 
-                        [OnEvent "Changed"] = function()
-                            local CurrentInstance = Peek(States.PrimarySelected)
-        
-                            if not CurrentInstance then
+                        [OnEvent "FocusLost"] = function()
+                            local CurrentlySelected = Peek(States.CurrentlySelected)
+
+                            if #CurrentlySelected == 0 then
                                 return
                             end
 
@@ -299,7 +420,9 @@ function Interface:Init() : DockWidgetPluginGui
                                 return
                             end
         
-                            CurrentInstance:SetAttribute("EmitDelay", Number)
+                            for _, Instance in CurrentlySelected do
+                                Instance:SetAttribute("EmitDelay", Number)
+                            end
                         end,
                     },
                 }
@@ -326,13 +449,14 @@ function Interface:Init() : DockWidgetPluginGui
                                 return ""
                             end
         
-                            return tostring(CurrentInstance:GetAttribute("EmitDuration") or 0)
+                            return tostring(CurrentInstance:GetAttribute("EmitDuration") or "")
                         end),
         
-                        PlaceholderText = "Emit Duration",
+                        PlaceholderText = "0",
 
                         Enabled = Scope:Computed(function(Use)
-                            return Use(States.IsEditable) and not Use(States.IsEffectModule)
+                            --return Use(States.IsEditable) and not Use(States.IsEffectModule)
+                            return #Use(States.CurrentlySelected) > 0
                         end),
 
                         LayoutOrder = 1,
@@ -341,11 +465,10 @@ function Interface:Init() : DockWidgetPluginGui
 
                         [Out "Text"] = CorePropertyValues.EmitDuration,
 
-                        [OnEvent "Changed"] = function()
-                            local CurrentInstance = Peek(States.PrimarySelected)
-                            local IsEffectModule = Peek(States.IsEffectModule)
-        
-                            if not CurrentInstance or IsEffectModule then
+                        [OnEvent "FocusLost"] = function()
+                            local CurrentlySelected = Peek(States.CurrentlySelected)
+
+                            if #CurrentlySelected == 0 then
                                 return
                             end
 
@@ -356,7 +479,9 @@ function Interface:Init() : DockWidgetPluginGui
                                 return
                             end
         
-                            CurrentInstance:SetAttribute("EmitDuration", Number)
+                            for _, Instance in CurrentlySelected do
+                                Instance:SetAttribute("EmitDuration", Number)
+                            end
                         end,
                     },
                 }
@@ -366,7 +491,6 @@ function Interface:Init() : DockWidgetPluginGui
 
     local EmitActions = VerticalCollapsibleSection {
         Name = "EmitActions",
-        --Size = UDim2.new(1, 0, 0, 50),
         Collapsed = false,
         Padding = UDim.new(0, 10),
         Text = "Emit Actions",
@@ -545,14 +669,113 @@ function Interface:Init() : DockWidgetPluginGui
         Parent = Container,
 
         [Children] = {
-            TextInput {
-                PlaceholderText = "Enter a number",
-                Enabled = States.IsEmittable,
-                LayoutOrder = 1,
+            Scope:New "Frame" {
+                Name = "OperationAmount",
                 Size = UDim2.new(1, 0, 0, 30),
-                Position = UDim2.fromScale(0, 0),
+                BackgroundTransparency = 1,
 
-                [Out "Text"] = UtilValues.MathValue,
+                [Children] = {
+                    TextInput {
+                        PlaceholderText = "Min",
+                        Text = Peek(UtilValues.MathSliderMin),
+                        Enabled = States.IsEmittable,
+                        LayoutOrder = 1,
+                        Size = UDim2.fromScale(0.115, 1),
+                        Position = UDim2.fromScale(0, 0),
+
+                        [Out "Text"] = UtilValues.MathSliderMin,
+                    },
+
+                    TextInput {
+                        PlaceholderText = "Max",
+                        Text = Peek(UtilValues.MathSliderMax),
+                        Enabled = States.IsEmittable,
+                        LayoutOrder = 1,
+                        Size = UDim2.fromScale(0.115, 1),
+                        Position = UDim2.fromScale(0.13, 0),
+
+                        [Out "Text"] = UtilValues.MathSliderMax,
+                    },
+                    
+                    Slider {
+                        Size = UDim2.fromScale(0.5, 0.5),
+                        Position = UDim2.fromScale(0.25, 0),
+                        Value = UtilValues.MathValue,
+
+                        Min = Scope:Computed(function(Use)
+                            local Value = tonumber(Use(UtilValues.MathSliderMin))
+
+                            if not Value then
+                                return 1
+                            end 
+
+                            return Value
+                        end),
+
+                        Max = Scope:Computed(function(Use)
+                            local Value = tonumber(Use(UtilValues.MathSliderMax))
+
+                            if not Value then
+                                return 1
+                            end 
+
+                            return Value
+                        end),
+
+                        Step = Scope:Value(0.1),
+                        Enabled = States.IsEmittable,
+
+                        OnChange = function(NewValue : number)
+                            UtilValues.MathValue:set(NewValue)
+                        end,
+                    },
+
+                    TextInput {
+                        PlaceholderText = "Value",
+
+                        Text = Scope:Computed(function(Use)
+                            local Value = Use(UtilValues.MathValue)
+                            return tostring(math.round(Value * 10) / 10)
+                        end),
+
+                        Enabled = States.IsEmittable,
+                        LayoutOrder = 1,
+                        Size = UDim2.fromScale(0.25, 1),
+                        Position = UDim2.fromScale(0.75, 0),
+
+                        [Out "Text"] = UtilValues.MathValueRaw,
+
+                        [OnEvent "Changed"] = function()
+                            task.defer(function()
+                                local Text = Peek(UtilValues.MathValueRaw)
+                                local Number = tonumber(Text)
+            
+                                if not Number then
+                                    return
+                                end
+
+                                if Number == Peek(UtilValues.MathValue) then
+                                    return
+                                end
+            
+                                UtilValues.MathValue:set(Number)
+                            end)
+                        end,
+                    },
+
+                    Label {
+                        Text = Scope:Computed(function(Use)
+                            local Value = Use(UtilValues.MathValue)
+                            return string.format("%.1f", Value)
+                        end),
+
+                        TextScaled = true,
+                        LayoutOrder = 0,
+                        Size = UDim2.fromScale(0.5, 0.5),
+                        Position = UDim2.fromScale(0.25, 0.5),
+                        TextXAlignment = Enum.TextXAlignment.Center,
+                    },
+                }
             },
 
             TextInput {
@@ -680,6 +903,27 @@ function Interface:Init() : DockWidgetPluginGui
         }
     }
 
+    -- local AssetLibrary = VerticalCollapsibleSection {
+    --     Name = "AssetLibrary",
+    --     Collapsed = true,
+    --     Padding = UDim.new(0, 10),
+    --     Text = "Asset Library",
+    --     Enabled = true,
+    --     Parent = Container,
+
+    --     [Children] = {
+    --         BaseButton {
+    --             Size = UDim2.new(1, 0, 0, 30),
+    --             Text = "Open Library",
+    --             Enabled = true,
+
+    --             Activated = function()
+    --                 LibraryWidget.Enabled = not LibraryWidget.Enabled
+    --             end,
+    --         },
+    --     }
+    -- }
+
     local ProgrammerModules = VerticalCollapsibleSection {
         Name = "ProgrammerModules",
         Collapsed = true,
@@ -738,6 +982,9 @@ function Interface:Init() : DockWidgetPluginGui
     EmitUtils:SetWidget(MainWidget)
 
     MainWidget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    LibraryWidget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    --InitLibrary()
 
     return MainWidget
 end
