@@ -276,6 +276,9 @@ function Interface:Init() : DockWidgetPluginGui
 
     local function CreateCorePropertyRow(LayoutOrder : number, LabelText : string, AttributeName : string, TextState)
         local Row = CreateRow(Scope, LayoutOrder)
+        local IsFocused = false
+        local FocusStartText = TextState.Value
+        local IsDirty = false
 
         CreateLabel(Scope, Row, LabelText)
 
@@ -289,22 +292,47 @@ function Interface:Init() : DockWidgetPluginGui
             UDim2.fromScale(0.65, 1)
         )
 
+        Scope:AddObject(TextBox.Focused:Connect(function()
+            IsFocused = true
+            FocusStartText = TextBox.Text
+            IsDirty = false
+        end))
+
+        Scope:AddObject(TextBox:GetPropertyChangedSignal("Text"):Connect(function()
+            if not IsFocused then
+                return
+            end
+
+            IsDirty = TextBox.Text ~= FocusStartText
+        end))
+
         Scope:AddObject(TextBox.FocusLost:Connect(function()
+            IsFocused = false
+
+            if not IsDirty then
+                return
+            end
+
             local CurrentlySelected = States.CurrentlySelected.Value
 
             if #CurrentlySelected == 0 then
+                IsDirty = false
                 return
             end
 
             local Number = tonumber(TextState.Value)
 
             if not Number or Number == 0 then
+                IsDirty = false
                 return
             end
 
             for _, Instance in CurrentlySelected do
                 Instance:SetAttribute(AttributeName, Number)
             end
+
+            IsDirty = false
+            FocusStartText = TextBox.Text
         end))
 
         return Row
