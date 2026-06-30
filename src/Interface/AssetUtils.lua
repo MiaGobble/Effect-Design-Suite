@@ -6,36 +6,62 @@ local Bin = script.Parent.Parent
 local Assets = Bin:FindFirstChild("Assets")
 local Textures = Assets:FindFirstChild("Textures")
 
-function AssetUtils:GetAllAssetCategories()
-    local AssetCategories = {}
+local function CloneAsset(Asset, CategoryIndex : number)
+    return {
+        Type = Asset.Type,
+        FlipbookType = Asset.FlipbookType,
+        TextureId = Asset.TextureId,
+        CategoryIndex = CategoryIndex,
+    }
+end
+
+function AssetUtils:GetAssetCatalog()
+    local Catalog = {}
 
     for _, Module in Textures:GetChildren() do
         local Collection = require(Module)
 
         for _, Asset in Collection do
-            if not table.find(AssetCategories, Asset.Type) then
-                table.insert(AssetCategories, Asset.Type)
+            local Category = Asset.Type
+
+            if not Catalog[Category] then
+                Catalog[Category] = {}
             end
+
+            table.insert(Catalog[Category], CloneAsset(Asset, #Catalog[Category] + 1))
         end
     end
 
-    return AssetCategories
+    local Categories = {}
+
+    for Category in Catalog do
+        table.insert(Categories, Category)
+    end
+
+    table.sort(Categories)
+
+    for _, Category in Categories do
+        table.sort(Catalog[Category], function(Left, Right)
+            return tostring(Left.TextureId) < tostring(Right.TextureId)
+        end)
+
+        for Index, Asset in ipairs(Catalog[Category]) do
+            Asset.CategoryIndex = Index
+        end
+    end
+
+    return {
+        Categories = Categories,
+        AssetsByCategory = Catalog,
+    }
+end
+
+function AssetUtils:GetAllAssetCategories()
+    return self:GetAssetCatalog().Categories
 end
 
 function AssetUtils:GetAssetsByCategory(Category)
-    local MatchingAssets = {}
-
-    for _, Module in Textures:GetChildren() do
-        local Collection = require(Module)
-
-        for _, Asset in Collection do
-            if Asset.Type == Category then
-                table.insert(MatchingAssets, Asset)
-            end
-        end
-    end
-
-    return MatchingAssets
+    return self:GetAssetCatalog().AssetsByCategory[Category] or {}
 end
 
 return AssetUtils

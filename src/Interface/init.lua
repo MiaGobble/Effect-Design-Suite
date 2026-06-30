@@ -15,11 +15,13 @@ local PARTICLE_PROPERTIES = {
 }
 
 local Selection = game:GetService("Selection")
+local RunService = game:GetService("RunService")
 
 local Bin = script.Parent
 local Objects = Bin:FindFirstChild("Objects")
 local Packages = Bin:FindFirstChild("Packages")
 local EmitUtils = require(script.EmitUtils)
+local AssetUtils = require(script.AssetUtils)
 local States = require(Objects:FindFirstChild("States"))
 local Seam = require(Packages:FindFirstChild("Seam"))
 local Jian = require(Packages:FindFirstChild("Jian"))
@@ -36,6 +38,170 @@ local function NormalizeParticleProperty(PropertyName : string)
     end
 
     return PropertyName
+end
+
+local function FormatTextureId(TextureId : number | string)
+    return "rbxassetid://" .. tostring(TextureId)
+end
+
+local function GetFlipbookGridSize(FlipbookType : number?)
+    if FlipbookType == 8 then
+        return 8
+    elseif FlipbookType == 4 then
+        return 4
+    end
+
+    return 1
+end
+
+local function GetParticleFlipbookLayout(FlipbookType : number?)
+    if FlipbookType == 8 then
+        return Enum.ParticleFlipbookLayout.Grid8x8
+    elseif FlipbookType == 4 then
+        return Enum.ParticleFlipbookLayout.Grid4x4
+    end
+
+    return Enum.ParticleFlipbookLayout.None
+end
+
+local function ApplyAssetToTextureObject(Asset, Object : Instance)
+    local Texture = FormatTextureId(Asset.TextureId)
+
+    if Object:IsA("ParticleEmitter") then
+        Object.Texture = Texture
+        Object.FlipbookLayout = GetParticleFlipbookLayout(Asset.FlipbookType)
+        Object.FlipbookMode = Enum.ParticleFlipbookMode.Loop
+
+        if GetFlipbookGridSize(Asset.FlipbookType) > 1 then
+            Object.FlipbookFramerate = NumberRange.new(24)
+        else
+            Object.FlipbookFramerate = NumberRange.new(1)
+        end
+    elseif Object:IsA("Beam") or Object:IsA("Trail") then
+        Object.Texture = Texture
+    end
+end
+
+local function ResolveParticleInsertParent(SelectionTarget : Instance?)
+    if not SelectionTarget then
+        return nil
+    end
+
+    if SelectionTarget:IsA("ParticleEmitter") or SelectionTarget:IsA("Trail") or SelectionTarget:IsA("Beam") then
+        return SelectionTarget.Parent
+    end
+
+    return SelectionTarget
+end
+
+local function CreatePreviewFrame(Scope, PreviewEntries, Asset, LayoutOrder : number, Animate : boolean?, Size : UDim2?)
+    local PreviewWindow = Scope:New("Frame", {
+        LayoutOrder = LayoutOrder,
+        Size = Size or UDim2.fromOffset(88, 88),
+        BackgroundColor3 = Color3.fromRGB(28, 28, 28),
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+
+        [Seam.Children] = {
+            Scope:New("UICorner", {
+                CornerRadius = UDim.new(0, 6),
+            }),
+            Scope:New("UIStroke", {
+                Color = Color3.fromRGB(52, 52, 52),
+                Thickness = 1,
+            }),
+        },
+    })
+
+    local GridSize = GetFlipbookGridSize(Asset.FlipbookType)
+    local PreviewImage = Scope:New("ImageLabel", {
+        Parent = PreviewWindow,
+        BackgroundTransparency = 1,
+        Image = FormatTextureId(Asset.TextureId),
+        ScaleType = Enum.ScaleType.Stretch,
+        Size = UDim2.fromScale(GridSize, GridSize),
+    })
+
+    if Animate == true and GridSize > 1 then
+        table.insert(PreviewEntries, {
+            Image = PreviewImage,
+            GridSize = GridSize,
+            TotalFrames = GridSize * GridSize,
+            StartedAt = os.clock(),
+            FramesPerSecond = GridSize == 8 and 20 or 12,
+        })
+    end
+
+    return PreviewWindow
+end
+
+local function CreateAssetCard(Scope, PreviewEntries, Asset, LayoutOrder : number, IsSelected, SelectCallback)
+    local Card = Scope:New("Frame", {
+        LayoutOrder = LayoutOrder,
+        Size = UDim2.fromOffset(188, 76),
+        BackgroundColor3 = Scope:Computed(function(Use)
+            if Use(IsSelected) then
+                return Color3.fromRGB(53, 53, 53)
+            end
+
+            return Color3.fromRGB(40, 40, 40)
+        end),
+        BorderSizePixel = 0,
+
+        [Seam.Children] = {
+            Scope:New("UICorner", {
+                CornerRadius = UDim.new(0, 8),
+            }),
+            Scope:New("UIStroke", {
+                Color = Color3.fromRGB(56, 56, 56),
+                Thickness = 1,
+            }),
+            Scope:New("UIPadding", {
+                PaddingTop = UDim.new(0, 8),
+                PaddingBottom = UDim.new(0, 8),
+                PaddingLeft = UDim.new(0, 8),
+                PaddingRight = UDim.new(0, 8),
+            }),
+        },
+    })
+
+    CreatePreviewFrame(Scope, PreviewEntries, Asset, 1, false, UDim2.fromOffset(56, 56)).Parent = Card
+
+    Scope:New(Jian.Text, {
+        Parent = Card,
+        LayoutOrder = 2,
+        Position = UDim2.fromOffset(68, 8),
+        Size = UDim2.new(1, -76, 0, 18),
+        AutomaticSize = Enum.AutomaticSize.None,
+        Text = string.format("%s %03d", Asset.Type, Asset.CategoryIndex),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextSize = 14,
+    })
+
+    Scope:New(Jian.Text, {
+        Parent = Card,
+        LayoutOrder = 3,
+        Position = UDim2.fromOffset(68, 30),
+        Size = UDim2.new(1, -76, 0, 16),
+        AutomaticSize = Enum.AutomaticSize.None,
+        Text = string.format("%dx%d flipbook", GetFlipbookGridSize(Asset.FlipbookType), GetFlipbookGridSize(Asset.FlipbookType)),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextSize = 11,
+        Active = false,
+    })
+
+    Scope:New("TextButton", {
+        Parent = Card,
+        BackgroundTransparency = 1,
+        AutoButtonColor = false,
+        Text = "",
+        Size = UDim2.fromScale(1, 1),
+        [Seam.OnEvent("Activated")] = function()
+            SelectCallback(Asset)
+        end,
+    })
+
+    return Card
 end
 
 local function ApplyMathOperation(Value: number, Property: string, Operation: string, Instances: {Instance})
@@ -220,6 +386,25 @@ function Interface:Init() : DockWidgetPluginGui
         return #Use(States.RawSelection) > 0
     end)
 
+    local HasReplaceTargets = Scope:Computed(function(Use)
+        local RawSelection = Use(States.RawSelection)
+        local CurrentSelection = Use(States.CurrentlySelected)
+
+        for _, Instance in RawSelection do
+            if Instance:IsA("ParticleEmitter") or Instance:IsA("Beam") or Instance:IsA("Trail") then
+                return true
+            end
+        end
+
+        for _, Instance in CurrentSelection do
+            if Instance:IsA("ParticleEmitter") or Instance:IsA("Beam") or Instance:IsA("Trail") then
+                return true
+            end
+        end
+
+        return false
+    end)
+
     local SelectionSummary = Scope:Computed(function(Use)
         local Selected = Use(States.CurrentlySelected)
 
@@ -242,6 +427,13 @@ function Interface:Init() : DockWidgetPluginGui
     local MathPropertyText = Scope:Value("Size")
     local MathValueText = Scope:Value("3")
     local CopiedValue = Scope:Value(nil)
+    local SelectedAsset = Scope:Value(nil)
+    local SelectedAssetCategory = Scope:Value(nil)
+    local DefaultSelectedAsset = nil
+    local AssetCatalog = nil
+
+    local PreviewEntries = {}
+    local IsAssetBrowserInitialized = false
 
     MainWidget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
@@ -273,6 +465,422 @@ function Interface:Init() : DockWidgetPluginGui
         LayoutOrder = 0,
         Active = HasEditableSelection,
     })
+
+    local AssetWidget = Scope:New(Jian.Widget, {
+        WidgetId = "EffectDesignerSuiteAssets",
+        Title = "Asset Presets",
+        InitialDockState = Enum.InitialDockState.Float,
+        InitialEnabled = false,
+        OverridePreviousState = false,
+        DefaultWidth = 760,
+        DefaultHeight = 560,
+        MinimumWidth = 480,
+        MinimumHeight = 320,
+    }) :: DockWidgetPluginGui
+
+    AssetWidget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    Scope:New(Jian.Background, {
+        Parent = AssetWidget,
+    })
+
+    local AssetRoot = Scope:New("Frame", {
+        Parent = AssetWidget,
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+
+        [Seam.Children] = {
+            Scope:New("UIPadding", {
+                PaddingTop = UDim.new(0, 16),
+                PaddingBottom = UDim.new(0, 16),
+                PaddingLeft = UDim.new(0, 16),
+                PaddingRight = UDim.new(0, 16),
+            }),
+        },
+    })
+
+    Scope:New(Jian.Text, {
+        Parent = AssetRoot,
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.new(1, 0, 0, 22),
+        AutomaticSize = Enum.AutomaticSize.None,
+        Text = "Insert creates a ParticleEmitter. Replace applies to selected ParticleEmitters, Beams, and Trails.",
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
+    })
+
+    local AssetNavigation = Scope:New("ScrollingFrame", {
+        Parent = AssetRoot,
+        Position = UDim2.fromOffset(0, 36),
+        Size = UDim2.new(0, 152, 1, -36),
+        BackgroundColor3 = Color3.fromRGB(32, 32, 32),
+        BorderSizePixel = 0,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        CanvasSize = UDim2.fromScale(0, 0),
+        ScrollBarThickness = 6,
+
+        [Seam.Children] = {
+            Scope:New("UICorner", {
+                CornerRadius = UDim.new(0, 8),
+            }),
+            Scope:New("UIStroke", {
+                Color = Color3.fromRGB(56, 56, 56),
+                Thickness = 1,
+            }),
+            Scope:New("UIPadding", {
+                PaddingTop = UDim.new(0, 10),
+                PaddingBottom = UDim.new(0, 10),
+                PaddingLeft = UDim.new(0, 10),
+                PaddingRight = UDim.new(0, 10),
+            }),
+            Scope:New("UIListLayout", {
+                Padding = UDim.new(0, 8),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+            }),
+        },
+    })
+
+    local AssetGridFrame = Scope:New("ScrollingFrame", {
+        Parent = AssetRoot,
+        Position = UDim2.fromOffset(168, 36),
+        Size = UDim2.new(1, -504, 1, -36),
+        BackgroundColor3 = Color3.fromRGB(32, 32, 32),
+        BorderSizePixel = 0,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        CanvasSize = UDim2.fromScale(0, 0),
+        ScrollBarThickness = 6,
+
+        [Seam.Children] = {
+            Scope:New("UICorner", {
+                CornerRadius = UDim.new(0, 8),
+            }),
+            Scope:New("UIStroke", {
+                Color = Color3.fromRGB(56, 56, 56),
+                Thickness = 1,
+            }),
+            Scope:New("UIPadding", {
+                PaddingTop = UDim.new(0, 12),
+                PaddingBottom = UDim.new(0, 12),
+                PaddingLeft = UDim.new(0, 12),
+                PaddingRight = UDim.new(0, 12),
+            }),
+            Scope:New("UIGridLayout", {
+                CellSize = UDim2.fromOffset(188, 76),
+                CellPadding = UDim2.fromOffset(10, 10),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+            }),
+        },
+    })
+
+    local AssetGridEmptyText = Scope:New(Jian.Text, {
+        Parent = AssetGridFrame,
+        Text = Scope:Computed(function(Use)
+            if Use(SelectedAssetCategory) then
+                return ""
+            end
+
+            return "Select a category"
+        end),
+        Size = UDim2.new(1, -24, 0, 24),
+        AutomaticSize = Enum.AutomaticSize.None,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
+    })
+
+    local InsertAssetPreset
+    local ReplaceAssetPreset
+
+    local AssetPreviewPane = Scope:New("Frame", {
+        Parent = AssetRoot,
+        Position = UDim2.new(1, -320, 0, 36),
+        Size = UDim2.new(0, 320, 1, -36),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundColor3 = Color3.fromRGB(36, 36, 36),
+        BorderSizePixel = 0,
+
+        [Seam.Children] = {
+            Scope:New("UICorner", {
+                CornerRadius = UDim.new(0, 8),
+            }),
+            Scope:New("UIStroke", {
+                Color = Color3.fromRGB(56, 56, 56),
+                Thickness = 1,
+            }),
+            Scope:New("UIPadding", {
+                PaddingTop = UDim.new(0, 12),
+                PaddingBottom = UDim.new(0, 12),
+                PaddingLeft = UDim.new(0, 12),
+                PaddingRight = UDim.new(0, 12),
+            }),
+        },
+    })
+
+    Scope:New(Jian.Text, {
+        Parent = AssetPreviewPane,
+        LayoutOrder = 1,
+        Text = Scope:Computed(function(Use)
+            local Asset = Use(SelectedAsset)
+
+            if not Asset then
+                return "Select an asset preset"
+            end
+
+            return string.format("%s %03d", Asset.Type, Asset.CategoryIndex)
+        end),
+        Size = UDim2.new(1, 0, 0, 22),
+        Position = UDim2.fromOffset(0, 0),
+        AutomaticSize = Enum.AutomaticSize.None,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextSize = 16,
+    })
+
+    local PreviewFrameHost = Scope:New("Frame", {
+        Parent = AssetPreviewPane,
+        LayoutOrder = 2,
+        Position = UDim2.fromOffset(0, 34),
+        Size = UDim2.new(1, 0, 0, 184),
+        BackgroundTransparency = 1,
+    })
+
+    local AssetGridInstances = {}
+    local RefreshSelectedAssetPreview
+
+    local function ClearAssetGrid()
+        for _, Instance in AssetGridInstances do
+            Instance:Destroy()
+        end
+
+        table.clear(AssetGridInstances)
+    end
+
+    local function RefreshAssetGrid()
+        ClearAssetGrid()
+
+        local Category = SelectedAssetCategory.Value
+
+        if not Category or not AssetCatalog then
+            AssetGridEmptyText.Visible = true
+            return
+        end
+
+        AssetGridEmptyText.Visible = false
+
+        for AssetOrder, Asset in ipairs(AssetCatalog.AssetsByCategory[Category] or {}) do
+            local Card = CreateAssetCard(
+                Scope,
+                PreviewEntries,
+                Asset,
+                AssetOrder,
+                Scope:Computed(function(Use)
+                    return Use(SelectedAsset) == Asset
+                end),
+                function(NewAsset)
+                    SelectedAsset.Value = NewAsset
+                    RefreshSelectedAssetPreview()
+                end
+            )
+
+            Card.Parent = AssetGridFrame
+            table.insert(AssetGridInstances, Card)
+        end
+    end
+
+    function RefreshSelectedAssetPreview()
+        for _, Child in PreviewFrameHost:GetChildren() do
+            Child:Destroy()
+        end
+
+        table.clear(PreviewEntries)
+
+        local Asset = SelectedAsset.Value
+
+        if not Asset then
+            return
+        end
+
+        CreatePreviewFrame(Scope, PreviewEntries, Asset, 1, true, UDim2.new(1, 0, 0, 184)).Parent = PreviewFrameHost
+    end
+
+    Scope:New(Jian.Text, {
+        Parent = AssetPreviewPane,
+        LayoutOrder = 3,
+        Position = UDim2.fromOffset(0, 226),
+        Size = UDim2.new(1, 0, 0, 18),
+        AutomaticSize = Enum.AutomaticSize.None,
+        Text = Scope:Computed(function(Use)
+            local Asset = Use(SelectedAsset)
+
+            if not Asset then
+                return "Texture: -"
+            end
+
+            return string.format("Texture: %s", tostring(Asset.TextureId))
+        end),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextSize = 12,
+        Active = false,
+    })
+
+    Scope:New(Jian.Text, {
+        Parent = AssetPreviewPane,
+        LayoutOrder = 4,
+        Position = UDim2.fromOffset(0, 248),
+        Size = UDim2.new(1, 0, 0, 18),
+        AutomaticSize = Enum.AutomaticSize.None,
+        Text = Scope:Computed(function(Use)
+            local Asset = Use(SelectedAsset)
+
+            if not Asset then
+                return "Flipbook: -"
+            end
+
+            local GridSize = GetFlipbookGridSize(Asset.FlipbookType)
+            return string.format("Flipbook: %dx%d", GridSize, GridSize)
+        end),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextSize = 12,
+        Active = false,
+    })
+
+    Scope:New(Jian.TextButton, {
+        Parent = AssetPreviewPane,
+        Position = UDim2.fromOffset(0, 280),
+        Size = UDim2.new(1, 0, 0, 32),
+        Text = "Insert",
+        Active = Scope:Computed(function(Use)
+            return Use(SelectedAsset) ~= nil and Use(HasRawSelection)
+        end),
+        [Seam.OnEvent("Activated")] = function()
+            local Asset = SelectedAsset.Value
+
+            if not Asset then
+                return
+            end
+
+            InsertAssetPreset(Asset)
+        end,
+    })
+
+    Scope:New(Jian.TextButton, {
+        Parent = AssetPreviewPane,
+        Position = UDim2.fromOffset(0, 320),
+        Size = UDim2.new(1, 0, 0, 32),
+        Text = "Replace",
+        Active = Scope:Computed(function(Use)
+            return Use(SelectedAsset) ~= nil and Use(HasReplaceTargets)
+        end),
+        [Seam.OnEvent("Activated")] = function()
+            local Asset = SelectedAsset.Value
+
+            if not Asset then
+                return
+            end
+
+            ReplaceAssetPreset(Asset)
+        end,
+    })
+
+    function InsertAssetPreset(Asset)
+        local Target = ResolveParticleInsertParent(States.RawSelection.Value[1])
+
+        if not Target then
+            return
+        end
+
+        local NewEmitter = Instance.new("ParticleEmitter")
+        NewEmitter.Name = string.format("%sPreset", Asset.Type)
+        NewEmitter.Enabled = false
+        ApplyAssetToTextureObject(Asset, NewEmitter)
+
+        local Success = pcall(function()
+            NewEmitter.Parent = Target
+        end)
+
+        if not Success then
+            NewEmitter:Destroy()
+            return
+        end
+
+        Selection:Set({NewEmitter})
+    end
+
+    function ReplaceAssetPreset(Asset)
+        local Targets = {}
+        local Seen = {}
+
+        for _, Instance in States.CurrentlySelected.Value do
+            if (Instance:IsA("ParticleEmitter") or Instance:IsA("Beam") or Instance:IsA("Trail")) and not Seen[Instance] then
+                Seen[Instance] = true
+                table.insert(Targets, Instance)
+            end
+        end
+
+        for _, Instance in States.RawSelection.Value do
+            if (Instance:IsA("ParticleEmitter") or Instance:IsA("Beam") or Instance:IsA("Trail")) and not Seen[Instance] then
+                Seen[Instance] = true
+                table.insert(Targets, Instance)
+            end
+        end
+
+        for _, Instance in Targets do
+            ApplyAssetToTextureObject(Asset, Instance)
+        end
+    end
+
+    local function EnsureAssetBrowserInitialized()
+        if IsAssetBrowserInitialized then
+            return
+        end
+
+        AssetCatalog = AssetUtils:GetAssetCatalog()
+
+        if AssetCatalog.Categories[1] and AssetCatalog.AssetsByCategory[AssetCatalog.Categories[1]] then
+            SelectedAssetCategory.Value = AssetCatalog.Categories[1]
+            DefaultSelectedAsset = AssetCatalog.AssetsByCategory[AssetCatalog.Categories[1]][1]
+        end
+
+        for CategoryOrder, Category in ipairs(AssetCatalog.Categories) do
+            local CategoryButton = Scope:New(Jian.TextButton, {
+                Parent = AssetNavigation,
+                LayoutOrder = CategoryOrder,
+                Size = UDim2.new(1, 0, 0, 30),
+                Text = string.format("%s (%d)", Category, #(AssetCatalog.AssetsByCategory[Category] or {})),
+                Active = true,
+                [Seam.OnEvent("Activated")] = function()
+                    SelectedAssetCategory.Value = Category
+
+                    if not SelectedAsset.Value or SelectedAsset.Value.Type ~= Category then
+                        SelectedAsset.Value = (AssetCatalog.AssetsByCategory[Category] or {})[1]
+                        RefreshSelectedAssetPreview()
+                    end
+
+                    RefreshAssetGrid()
+                end,
+            })
+
+            CategoryButton.Parent = AssetNavigation
+        end
+
+        RefreshAssetGrid()
+
+        IsAssetBrowserInitialized = true
+    end
+
+    Scope:AddObject(RunService.RenderStepped:Connect(function()
+        if not AssetWidget.Enabled then
+            return
+        end
+
+        local Now = os.clock()
+
+        for _, Preview in PreviewEntries do
+            local FrameIndex = math.floor((Now - Preview.StartedAt) * Preview.FramesPerSecond) % Preview.TotalFrames
+            local Column = FrameIndex % Preview.GridSize
+            local Row = math.floor(FrameIndex / Preview.GridSize)
+
+            Preview.Image.Position = UDim2.fromScale(-Column, -Row)
+        end
+    end))
 
     local function CreateCorePropertyRow(LayoutOrder : number, LabelText : string, AttributeName : string, TextState)
         local Row = CreateRow(Scope, LayoutOrder)
@@ -538,6 +1146,19 @@ function Interface:Init() : DockWidgetPluginGui
         Selection:Set({EffectModuleTemplate})
     end)
 
+    local OpenAssetPresetsButton = CreateActionButton(Scope, 2, "Presets", true, function()
+        EnsureAssetBrowserInitialized()
+
+        if not SelectedAsset.Value then
+            if DefaultSelectedAsset then
+                SelectedAsset.Value = DefaultSelectedAsset
+                RefreshSelectedAssetPreview()
+            end
+        end
+
+        AssetWidget.Enabled = not AssetWidget.Enabled
+    end)
+
     Scope:New(Jian.ListSection, {
         Parent = Container,
         LayoutOrder = 1,
@@ -609,6 +1230,16 @@ function Interface:Init() : DockWidgetPluginGui
         [Seam.Children] = {
             InsertPlayEffectModuleButton,
             InsertEffectModuleTemplateButton,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = Container,
+        LayoutOrder = 7,
+        Text = "Assets",
+        Active = true,
+
+        [Seam.Children] = {
+            OpenAssetPresetsButton,
         },
     })
 
