@@ -1,6 +1,5 @@
 local Interface = {}
 
--- Constants
 local PARTICLE_PROPERTIES = {
     "Size",
     "Color",
@@ -15,59 +14,30 @@ local PARTICLE_PROPERTIES = {
     "Texture",
 }
 
--- Services
 local Selection = game:GetService("Selection")
 
--- Imports
 local Bin = script.Parent
-local Components = Bin:FindFirstChild("Components")
 local Objects = Bin:FindFirstChild("Objects")
 local Packages = Bin:FindFirstChild("Packages")
-local IconicDesign = Components:FindFirstChild("IconicDesign")
-local PluginComponents = IconicDesign:FindFirstChild("PluginComponents")
-local StudioComponents = IconicDesign:FindFirstChild("StudioComponents")
 local EmitUtils = require(script.EmitUtils)
-local AssetUtils = require(script.AssetUtils)
-local Widget = require(PluginComponents:FindFirstChild("Widget"))
-local Background = require(StudioComponents:FindFirstChild("Background"))
-local ScrollFrame = require(StudioComponents:FindFirstChild("ScrollFrame"))
-local TextInput = require(StudioComponents:FindFirstChild("TextInput"))
-local VerticalCollapsibleSection = require(StudioComponents:FindFirstChild("VerticalCollapsibleSection"))
-local Checkbox = require(StudioComponents:FindFirstChild("Checkbox"))
-local Dropdown = require(StudioComponents:FindFirstChild("Dropdown"))
-local BaseButton = require(StudioComponents:FindFirstChild("BaseButton"))
-local Slider = require(StudioComponents:FindFirstChild("Slider"))
-local Label = require(StudioComponents:FindFirstChild("Label"))
 local States = require(Objects:FindFirstChild("States"))
-local Fusion = require(Packages:FindFirstChild("Fusion"))
-local Scope = Fusion.scoped(Fusion)
-local Peek = Fusion.peek
-local Children = Fusion.Children
-local OnEvent = Fusion.OnEvent
-local Out = Fusion.Out
+local Seam = require(Packages:FindFirstChild("Seam"))
+local Jian = require(Packages:FindFirstChild("Jian"))
 
--- Variables
-local MainWidget = Widget {
-    Id = "EffectDesignerSuite",
-    Name = "Effect Designer Suite",
-    InitialDockTo = Enum.InitialDockState.Left,
-    InitialEnabled = false,
-    ForceInitialEnabled = false,
-    FloatingSize = Vector2.new(300, 300),
-    MinimumSize = Vector2.new(300, 300),
-}
+local InterfaceScope = nil
 
-local LibraryWidget = Widget {
-    Id = "EffectDesignerSuiteLibrary",
-    Name = "Asset Library",
-    InitialDockTo = Enum.InitialDockState.Float,
-    InitialEnabled = false,
-    ForceInitialEnabled = false,
-    FloatingSize = Vector2.new(800, 300),
-    MinimumSize = Vector2.new(800, 300),
-}
+local function NormalizeParticleProperty(PropertyName : string)
+    local LowerName = PropertyName:lower()
 
--- Helper Functions
+    for _, Property in PARTICLE_PROPERTIES do
+        if Property:lower():sub(1, #LowerName) == LowerName then
+            return Property
+        end
+    end
+
+    return PropertyName
+end
+
 local function ApplyMathOperation(Value: number, Property: string, Operation: string, Instances: {Instance})
     if not Value or Property == "" then
         return
@@ -79,14 +49,14 @@ local function ApplyMathOperation(Value: number, Property: string, Operation: st
         end
 
         local PropertyType = typeof(Instance[Property])
-        
+
         if PropertyType == "NumberSequence" then
             local OldSequence = Instance[Property]
             local NewKeypoints = {}
 
             for _, Keypoint in OldSequence.Keypoints do
                 local NewValue, NewEnvelope
-                
+
                 if Operation == "add" then
                     NewValue = Keypoint.Value + Value
                     NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope + Value)
@@ -97,7 +67,10 @@ local function ApplyMathOperation(Value: number, Property: string, Operation: st
                     NewValue = Keypoint.Value * Value
                     NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope * Value)
                 elseif Operation == "divide" then
-                    if Value == 0 then continue end
+                    if Value == 0 then
+                        continue
+                    end
+
                     NewValue = Keypoint.Value / Value
                     NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope / Value)
                 end
@@ -114,7 +87,7 @@ local function ApplyMathOperation(Value: number, Property: string, Operation: st
             local OldMin = Instance[Property].Min
             local OldMax = Instance[Property].Max
             local NewMin, NewMax
-            
+
             if Operation == "add" then
                 NewMin = OldMin + Value
                 NewMax = OldMax + Value
@@ -125,7 +98,10 @@ local function ApplyMathOperation(Value: number, Property: string, Operation: st
                 NewMin = OldMin * Value
                 NewMax = OldMax * Value
             elseif Operation == "divide" then
-                if Value == 0 then continue end
+                if Value == 0 then
+                    continue
+                end
+
                 NewMin = OldMin / Value
                 NewMax = OldMax / Value
             end
@@ -139,852 +115,495 @@ local function ApplyMathOperation(Value: number, Property: string, Operation: st
             elseif Operation == "multiply" then
                 Instance[Property] = Instance[Property] * Value
             elseif Operation == "divide" then
-                if Value == 0 then continue end
+                if Value == 0 then
+                    continue
+                end
+
                 Instance[Property] = Instance[Property] / Value
             end
         end
     end
 end
 
-local function InitLibrary()
-    local MainBackground = Background {
-        Name = "Background",
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.new(1, 0, 1, 0),
-        ZIndex = 1,
-        Parent = LibraryWidget  ,
-    }
+local function CreateRow(Scope, LayoutOrder : number, Children : {any}?)
+    return Scope:New("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 36),
+        LayoutOrder = LayoutOrder,
 
-    local Sidebar = ScrollFrame({
-        ScrollBarThickness = 12,
-        CanvasScaleConstraint = Enum.ScrollingDirection.X,
-        Size = UDim2.new(0.3, 0, 1, 0),
-        
-        UIPadding = Scope:New "UIPadding" {
-            PaddingTop = UDim.new(0, 10),
-            PaddingBottom = UDim.new(0, 10),
-            PaddingLeft = UDim.new(0, 30),
-            PaddingRight = UDim.new(0, 30),
-        },
+        [Seam.Children] = Children,
+    })
+end
 
-        UILayout = Scope:New "UIListLayout" {
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            FillDirection = Enum.FillDirection.Vertical,
-            VerticalAlignment = Enum.VerticalAlignment.Top,
-            HorizontalAlignment = Enum.HorizontalAlignment.Center,
-            Padding = UDim.new(0, 10),
-        },
+local function CreateLabel(Scope, Parent : Instance, Text : any)
+    return Scope:New(Jian.Text, {
+        Parent = Parent,
+        Text = Text,
+        Size = UDim2.new(0.33, -8, 1, 0),
+        AutomaticSize = Enum.AutomaticSize.None,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+end
 
-        ZIndex = 2,
-        Parent = LibraryWidget,
-    }):FindFirstChild("Canvas")
+local function BindTextBox(Scope, TextBox : TextBox, State)
+    Scope:AddObject(TextBox:GetPropertyChangedSignal("Text"):Connect(function()
+        State.Value = TextBox.Text
+    end))
+end
 
-    Sidebar.BackgroundTransparency = 0.75
-    Sidebar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+local function CreateBoundTextBox(Scope, Parent : Instance, State, Active, PlaceholderText : string, Position : UDim2, Size : UDim2)
+    local TextBox = Scope:New(Jian.TextBox, {
+        Parent = Parent,
+        Text = State,
+        Active = Active,
+        PlaceholderText = PlaceholderText,
+        Position = Position,
+        Size = Size,
+    })
 
-    local SelectedCategory = Scope:Value("")
-    local Assets = Scope:Value({})
+    BindTextBox(Scope, TextBox, State)
 
-    local Content = ScrollFrame({
-        ScrollBarThickness = 12,
-        CanvasScaleConstraint = Enum.ScrollingDirection.X,
-        Position = UDim2.fromScale(0.3, 0),
-        Size = UDim2.new(0.7, 0, 1, 0),
-        
-        UIPadding = Scope:New "UIPadding" {
-            PaddingTop = UDim.new(0, 10),
-            PaddingBottom = UDim.new(0, 10),
-            PaddingLeft = UDim.new(0, 30),
-            PaddingRight = UDim.new(0, 30),
-        },
+    return TextBox
+end
 
-        -- UILayout = Scope:New "UIListLayout" {
-        --     SortOrder = Enum.SortOrder.LayoutOrder,
-        --     FillDirection = Enum.FillDirection.Vertical,
-        --     VerticalAlignment = Enum.VerticalAlignment.Top,
-        --     HorizontalAlignment = Enum.HorizontalAlignment.Center,
-        --     Padding = UDim.new(0, 10),
-        -- },
+local function CreateActionButton(Scope, LayoutOrder : number, Text : string, Active, Callback)
+    return Scope:New(Jian.TextButton, {
+        LayoutOrder = LayoutOrder,
+        Text = Text,
+        Active = Active,
+        Size = UDim2.new(1, 0, 0, 35),
+        [Seam.OnEvent("Activated")] = Callback,
+    })
+end
 
-        UILayout = Scope:New "UIGridLayout" {
-            CellSize = UDim2.new(0, 60, 0, 60),
-            CellPadding = UDim2.new(0, 30, 0, 30),
-        },
+local function SyncSelectionAttribute(State, AttributeName : string)
+    local CurrentInstance = States.PrimarySelected.Value
 
-        ZIndex = 2,
-        Parent = LibraryWidget,
+    if not CurrentInstance then
+        State.Value = ""
+        return
+    end
 
-        [Children] = {
-            Scope:ForValues(Assets, function(Use, Asset)
-                local Frame = Scope:New "Frame" {
-                    Name = Asset.Name,
-                }
-                
-                return Frame
-            end)
-        }
-    }):FindFirstChild("Canvas")
-
-    local CategoryDropdown = Dropdown {
-        Name = "CategoryDropdown",
-        Size = UDim2.new(1, 0, 0, 30),
-        Position = UDim2.fromScale(0, 0),
-        AnchorPoint = Vector2.new(0, 0),
-        ZIndex = 3,
-        Enabled = true,
-        Parent = Sidebar,
-        Value = SelectedCategory,
-        Options = Scope:Value(AssetUtils:GetAllAssetCategories()),
-
-        OnSelected = function(SelectedOption)
-            --SelectedCategory:set(SelectedOption)
-            Assets:set(AssetUtils:GetAssetsByCategory(SelectedOption))
-        end,
-    }
-
-
+    State.Value = tostring(CurrentInstance:GetAttribute(AttributeName) or "")
 end
 
 function Interface:Init() : DockWidgetPluginGui
-    local MainBackground = Background {
-        Name = "Background",
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.new(1, 0, 1, 0),
-        ZIndex = 1,
-        Parent = MainWidget,
-    }
-
-    local Container = ScrollFrame({
-        ScrollBarThickness = 12,
-        CanvasScaleConstraint = Enum.ScrollingDirection.X,
-
-        UIPadding = Scope:New "UIPadding" {
-            PaddingTop = UDim.new(0, 10),
-            PaddingBottom = UDim.new(0, 10),
-            PaddingLeft = UDim.new(0, 30),
-            PaddingRight = UDim.new(0, 30),
-        },
-
-        UILayout = Scope:New "UIListLayout" {
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            FillDirection = Enum.FillDirection.Vertical,
-            VerticalAlignment = Enum.VerticalAlignment.Top,
-            HorizontalAlignment = Enum.HorizontalAlignment.Center,
-            Padding = UDim.new(0, 10),
-        },
-
-        ZIndex = 2,
-        Parent = MainWidget,
-    }):FindFirstChild("Canvas")
-
-    local CorePropertyValues = {
-        EmitCount = Scope:Value(0),
-        EmitDelay = Scope:Value(0),
-        EmitDuration = Scope:Value(0),
-    }
-
-    local EmitValues = {
-        RepeatEmitDelay = Scope:Value(Peek(States.RepeatEmitDelay)),
-    }
-
-    local UtilValues = {
-        MathValue = Scope:Value(3),
-        MathValueRaw = Scope:Value("3"),
-        SelectedProperty = Scope:Value("Size"),
-        MathSliderMin = Scope:Value(1),
-        MathSliderMax = Scope:Value(5),
-    }
-
-    local PropertyValues = {
-        SelectedProperty = Scope:Value("Size"),
-        CopiedValue = Scope:Value(nil),
-    }
-
-    local CoreProperties = VerticalCollapsibleSection {
-        Name = "CoreProperties",
-        Collapsed = false,
-        Padding = UDim.new(0, 10),
-        Text = "Core Properties",
-        Enabled = true,
-        Parent = Container,
-
-        [Children] = {
-            Scope:New "Frame" {
-                Name = "EmitCount",
-                Size = UDim2.new(1, 0, 0, 30),
-                BackgroundTransparency = 1,
-
-                [Children] = {
-                    Label {
-                        Text = "Emit Count",
-                        LayoutOrder = 0,
-                        Size = UDim2.fromScale(0.3, 1),
-                        TextXAlignment = Enum.TextXAlignment.Left,
-                    },
-    
-                    TextInput {
-                        Text = Scope:Computed(function(Use)
-                            local CurrentInstance = Use(States.PrimarySelected)
-        
-                            if not CurrentInstance then
-                                return ""
-                            end
-        
-                            return tostring(CurrentInstance:GetAttribute("EmitCount") or "")
-                        end),
-
-                        Enabled = Scope:Computed(function(Use)
-                            --return Use(States.IsEditable) and not Use(States.IsEffectModule)
-                            return #Use(States.CurrentlySelected) > 0
-                        end),
-
-                        LayoutOrder = 1,
-                        Size = UDim2.fromScale(0.7, 1),
-                        Position = UDim2.fromScale(0.3, 0),
-                        PlaceholderText = "0",
-
-                        [Out "Text"] = CorePropertyValues.EmitCount,
-
-                        [OnEvent "FocusLost"] = function()
-                            local CurrentlySelected = Peek(States.CurrentlySelected)
-
-                            if #CurrentlySelected == 0 then
-                                return
-                            end
-
-                            local Text = Peek(CorePropertyValues.EmitCount)
-                            local Number = tonumber(Text)
-        
-                            if not Number or Number == 0 then
-                                return
-                            end
-        
-                            for _, Instance in CurrentlySelected do
-                                Instance:SetAttribute("EmitCount", Number)
-                            end
-                        end,
-                    },
-                }
-            },
-
-            Scope:New "Frame" {
-                Name = "EmitDelay",
-                Size = UDim2.new(1, 0, 0, 30),
-                BackgroundTransparency = 1,
-
-                [Children] = {
-                    Label {
-                        Text = "Emit Delay",
-                        LayoutOrder = 0,
-                        Size = UDim2.fromScale(0.3, 1),
-                        TextXAlignment = Enum.TextXAlignment.Left,
-                    },
-    
-                    TextInput {
-                        Text = Scope:Computed(function(Use)
-                            local CurrentInstance = Use(States.PrimarySelected)
-        
-                            if not CurrentInstance then
-                                return ""
-                            end
-        
-                            return tostring(CurrentInstance:GetAttribute("EmitDelay") or "")
-                        end),
-        
-                        PlaceholderText = "0",
-
-                        Enabled = Scope:Computed(function(Use)
-                            --  return Use(States.IsEditable) and not Use(States.IsEffectModule)
-                            return #Use(States.CurrentlySelected) > 0
-                        end),
-
-                        LayoutOrder = 1,
-                        Size = UDim2.fromScale(0.7, 1),
-                        Position = UDim2.fromScale(0.3, 0),
-
-                        [Out "Text"] = CorePropertyValues.EmitDelay,
-
-                        [OnEvent "FocusLost"] = function()
-                            local CurrentlySelected = Peek(States.CurrentlySelected)
-
-                            if #CurrentlySelected == 0 then
-                                return
-                            end
-
-                            local Text = Peek(CorePropertyValues.EmitDelay)
-                            local Number = tonumber(Text)
-        
-                            if not Number or Number == 0 then
-                                return
-                            end
-        
-                            for _, Instance in CurrentlySelected do
-                                Instance:SetAttribute("EmitDelay", Number)
-                            end
-                        end,
-                    },
-                }
-            },
-
-            Scope:New "Frame" {
-                Name = "EmitDuration",
-                Size = UDim2.new(1, 0, 0, 30),
-                BackgroundTransparency = 1,
-
-                [Children] = {
-                    Label {
-                        Text = "Emit Duration",
-                        LayoutOrder = 0,
-                        Size = UDim2.fromScale(0.3, 1),
-                        TextXAlignment = Enum.TextXAlignment.Left,
-                    },
-    
-                    TextInput {
-                        Text = Scope:Computed(function(Use)
-                            local CurrentInstance = Use(States.PrimarySelected)
-        
-                            if not CurrentInstance then
-                                return ""
-                            end
-        
-                            return tostring(CurrentInstance:GetAttribute("EmitDuration") or "")
-                        end),
-        
-                        PlaceholderText = "0",
-
-                        Enabled = Scope:Computed(function(Use)
-                            --return Use(States.IsEditable) and not Use(States.IsEffectModule)
-                            return #Use(States.CurrentlySelected) > 0
-                        end),
-
-                        LayoutOrder = 1,
-                        Size = UDim2.fromScale(0.7, 1),
-                        Position = UDim2.fromScale(0.3, 0),
-
-                        [Out "Text"] = CorePropertyValues.EmitDuration,
-
-                        [OnEvent "FocusLost"] = function()
-                            local CurrentlySelected = Peek(States.CurrentlySelected)
-
-                            if #CurrentlySelected == 0 then
-                                return
-                            end
-
-                            local Text = Peek(CorePropertyValues.EmitDuration)
-                            local Number = tonumber(Text)
-        
-                            if not Number or Number == 0 then
-                                return
-                            end
-        
-                            for _, Instance in CurrentlySelected do
-                                Instance:SetAttribute("EmitDuration", Number)
-                            end
-                        end,
-                    },
-                }
-            },
-        }
-    }
-
-    local EmitActions = VerticalCollapsibleSection {
-        Name = "EmitActions",
-        Collapsed = false,
-        Padding = UDim.new(0, 10),
-        Text = "Emit Actions",
-        Enabled = true,
-        Parent = Container,
-
-        [Children] = {
-            BaseButton {
-                Size = UDim2.new(1, 0, 0, 30),
-                Text = "Emit",
-                Enabled = States.IsEmittable,
-
-                Activated = function()
-                    EmitUtils:EmitCurrent()
-                end,
-            },
-
-            Scope:New "Frame" {
-                Name = "EmitCount",
-                Size = UDim2.new(1, 0, 0, 30),
-                BackgroundTransparency = 1,
-
-                [Children] = {
-                    TextInput {
-                        Text = Scope:Computed(function(Use)
-                            local RepeatEmit = Use(States.RepeatEmit)
-        
-                            if not RepeatEmit then
-                                return Peek(States.RepeatEmitDelay)
-                            end
-        
-                            return tostring(Use(EmitValues.RepeatEmitDelay))
-                        end),
-        
-                        PlaceholderText = "Repeat Emit Delay",
-                        Enabled = States.RepeatEmit,
-                        LayoutOrder = 1,
-                        Size = UDim2.fromScale(0.5, 1),
-                        Position = UDim2.fromScale(0, 0),
-
-                        [Out "Text"] = EmitValues.RepeatEmitDelay,
-
-                        [OnEvent "Changed"] = function()
-                            local Text = Peek(EmitValues.RepeatEmitDelay)
-                            local Number = tonumber(Text)
-        
-                            if not Number then
-                                return
-                            end
-        
-                            States.RepeatEmitDelay:set(Number)
-                        end,
-                    },
-                    
-                    Checkbox {
-                        Text = "Repeat Emit",
-                        Enabled = true,
-                        Value = Peek(States.RepeatEmit),
-                        LayoutOrder = 1,
-                        Size = UDim2.new(0.5, 0, 1, 0),
-                        Position = UDim2.new(1, 0, 0, 0),
-                        AnchorPoint = Vector2.new(1, 0),
-                        ZIndex = 3,
-                        Alignment = Enum.HorizontalAlignment.Right,
-        
-                        OnChange = function()
-                            States.RepeatEmit:set(not Peek(States.RepeatEmit))
-                            
-                            if Peek(States.RepeatEmit) then
-                                EmitUtils:EnableRepeatEmit()
-                            else
-                                EmitUtils:DisableRepeatEmit()
-                            end
-                        end,
-                    }
-                }
-            },
-        }
-    }
-
-    local PropertyCopyPaste = VerticalCollapsibleSection {
-        Name = "PropertyCopyPaste",
-        Collapsed = true,
-        Padding = UDim.new(0, 10),
-        Text = "Copy/Paste Properties",
-        Enabled = true,
-        Parent = Container,
-        ZIndex = 5,
-
-        [Children] = {
-            TextInput {
-                Size = UDim2.new(1, 0, 0, 30),
-                PlaceholderText = "Property Name",
-                Enabled = States.IsEmittable,
-                Text = PropertyValues.SelectedProperty,
-                ZIndex = 10,
-
-                [OnEvent "Changed"] = function()
-                    local Text = Peek(PropertyValues.SelectedProperty)
-                    local LowerText = Text:lower()
-                    
-                    -- Find the first property that starts with the input text
-                    for _, Property in PARTICLE_PROPERTIES do
-                        if Property:lower():sub(1, #LowerText) == LowerText then
-                            PropertyValues.SelectedProperty:set(Property)
-                            break
-                        end
-                    end
-                end,
-            },
-
-            Scope:New "Frame" {
-                Name = "ButtonContainer",
-                Size = UDim2.new(1, 0, 0, 30),
-                BackgroundTransparency = 1,
-
-                [Children] = {
-                    BaseButton {
-                        Size = UDim2.fromScale(0.48, 1),
-                        Text = "Copy",
-                        Enabled = Scope:Computed(function(Use)
-                            local SelectedInstances = Use(States.CurrentlySelected)
-                            return Use(States.IsEmittable) and #SelectedInstances == 1
-                        end),
-                        Position = UDim2.fromScale(0, 0),
-
-                        Activated = function()
-                            local SelectedProperty = Peek(PropertyValues.SelectedProperty)
-                            local SelectedInstances = Peek(States.CurrentlySelected)
-                            
-                            if #SelectedInstances == 0 then return end
-                            
-                            -- Get the property value from the first selected instance
-                            local FirstInstance = SelectedInstances[1]
-                            if not FirstInstance:IsA("ParticleEmitter") then return end
-                            
-                            local Value = FirstInstance[SelectedProperty]
-                            if Value then
-                                PropertyValues.CopiedValue:set(Value)
-                            end
-                        end,
-                    },
-
-                    BaseButton {
-                        Size = UDim2.fromScale(0.48, 1),
-                        Text = "Paste",
-                        Enabled = States.IsEmittable,
-                        Position = UDim2.fromScale(0.52, 0),
-
-                        Activated = function()
-                            local SelectedProperty = Peek(PropertyValues.SelectedProperty)
-                            local SelectedInstances = Peek(States.CurrentlySelected)
-                            local CopiedValue = Peek(PropertyValues.CopiedValue)
-                            
-                            if not CopiedValue then return end
-                            
-                            -- Apply the copied value to all selected instances
-                            for _, Instance in SelectedInstances do
-                                if Instance:IsA("ParticleEmitter") then
-                                    Instance[SelectedProperty] = CopiedValue
-                                end
-                            end
-                        end,
-                    },
-                }
-            },
-        }
-    }
-
-    local MathOperations = VerticalCollapsibleSection {
-        Name = "MathOperations",
-        Collapsed = true,
-        Padding = UDim.new(0, 10),
-        Text = "Math Operations",
-        Enabled = true,
-        Parent = Container,
-
-        [Children] = {
-            Scope:New "Frame" {
-                Name = "OperationAmount",
-                Size = UDim2.new(1, 0, 0, 30),
-                BackgroundTransparency = 1,
-
-                [Children] = {
-                    TextInput {
-                        PlaceholderText = "Min",
-                        Text = Peek(UtilValues.MathSliderMin),
-                        Enabled = States.IsEmittable,
-                        LayoutOrder = 1,
-                        Size = UDim2.fromScale(0.115, 1),
-                        Position = UDim2.fromScale(0, 0),
-
-                        [Out "Text"] = UtilValues.MathSliderMin,
-                    },
-
-                    TextInput {
-                        PlaceholderText = "Max",
-                        Text = Peek(UtilValues.MathSliderMax),
-                        Enabled = States.IsEmittable,
-                        LayoutOrder = 1,
-                        Size = UDim2.fromScale(0.115, 1),
-                        Position = UDim2.fromScale(0.13, 0),
-
-                        [Out "Text"] = UtilValues.MathSliderMax,
-                    },
-                    
-                    Slider {
-                        Size = UDim2.fromScale(0.5, 0.5),
-                        Position = UDim2.fromScale(0.25, 0),
-                        Value = UtilValues.MathValue,
-
-                        Min = Scope:Computed(function(Use)
-                            local Value = tonumber(Use(UtilValues.MathSliderMin))
-
-                            if not Value then
-                                return 1
-                            end 
-
-                            return Value
-                        end),
-
-                        Max = Scope:Computed(function(Use)
-                            local Value = tonumber(Use(UtilValues.MathSliderMax))
-
-                            if not Value then
-                                return 1
-                            end 
-
-                            return Value
-                        end),
-
-                        Step = Scope:Value(0.1),
-                        Enabled = States.IsEmittable,
-
-                        OnChange = function(NewValue : number)
-                            UtilValues.MathValue:set(NewValue)
-                        end,
-                    },
-
-                    TextInput {
-                        PlaceholderText = "Value",
-
-                        Text = Scope:Computed(function(Use)
-                            local Value = Use(UtilValues.MathValue)
-                            return tostring(math.round(Value * 10) / 10)
-                        end),
-
-                        Enabled = States.IsEmittable,
-                        LayoutOrder = 1,
-                        Size = UDim2.fromScale(0.25, 1),
-                        Position = UDim2.fromScale(0.75, 0),
-
-                        [Out "Text"] = UtilValues.MathValueRaw,
-
-                        [OnEvent "Changed"] = function()
-                            task.defer(function()
-                                local Text = Peek(UtilValues.MathValueRaw)
-                                local Number = tonumber(Text)
-            
-                                if not Number then
-                                    return
-                                end
-
-                                if Number == Peek(UtilValues.MathValue) then
-                                    return
-                                end
-            
-                                UtilValues.MathValue:set(Number)
-                            end)
-                        end,
-                    },
-
-                    Label {
-                        Text = Scope:Computed(function(Use)
-                            local Value = Use(UtilValues.MathValue)
-                            return string.format("%.1f", Value)
-                        end),
-
-                        TextScaled = true,
-                        LayoutOrder = 0,
-                        Size = UDim2.fromScale(0.5, 0.5),
-                        Position = UDim2.fromScale(0.25, 0.5),
-                        TextXAlignment = Enum.TextXAlignment.Center,
-                    },
-                }
-            },
-
-            TextInput {
-                PlaceholderText = "Property (e.g. Size, Speed)",
-                Enabled = States.IsEmittable,
-                LayoutOrder = 2,
-                Size = UDim2.new(1, 0, 0, 30),
-                Position = UDim2.fromScale(0, 0),
-
-                [Out "Text"] = UtilValues.SelectedProperty,
-            },
-
-            BaseButton {
-                Size = UDim2.new(1, 0, 0, 30),
-                Text = "Add",
-                LayoutOrder = 3,
-                Enabled = States.IsEmittable,
-
-                Activated = function()
-                    local Value = tonumber(Peek(UtilValues.MathValue))
-                    local Property = Peek(UtilValues.SelectedProperty)
-                    local SelectedInstances = Peek(States.CurrentlySelected)
-
-                    ApplyMathOperation(Value, Property, "add", SelectedInstances)
-                end,
-            },
-
-            BaseButton {
-                Size = UDim2.new(1, 0, 0, 30),
-                Text = "Subtract",
-                LayoutOrder = 4,
-                Enabled = States.IsEmittable,
-
-                Activated = function()
-                    local Value = tonumber(Peek(UtilValues.MathValue))
-                    local Property = Peek(UtilValues.SelectedProperty)
-                    local SelectedInstances = Peek(States.CurrentlySelected)
-
-                    ApplyMathOperation(Value, Property, "subtract", SelectedInstances)
-                end,
-            },
-
-            BaseButton {
-                Size = UDim2.new(1, 0, 0, 30),
-                Text = "Multiply",
-                LayoutOrder = 5,
-                Enabled = States.IsEmittable,
-
-                Activated = function()
-                    local Value = tonumber(Peek(UtilValues.MathValue))
-                    local Property = Peek(UtilValues.SelectedProperty)
-                    local SelectedInstances = Peek(States.CurrentlySelected)
-
-                    ApplyMathOperation(Value, Property, "multiply", SelectedInstances)
-                end,
-            },
-
-            BaseButton {
-                Size = UDim2.new(1, 0, 0, 30),
-                Text = "Divide",
-                LayoutOrder = 6,
-                Enabled = States.IsEmittable,
-
-                Activated = function()
-                    local Value = tonumber(Peek(UtilValues.MathValue))
-                    local Property = Peek(UtilValues.SelectedProperty)
-                    local SelectedInstances = Peek(States.CurrentlySelected)
-
-                    ApplyMathOperation(Value, Property, "divide", SelectedInstances)
-                end,
-            },
-        }
-    }
-
-    local AnimationIndicators = VerticalCollapsibleSection {
-        Name = "AnimationIndicators",
-        Collapsed = true,
-        Padding = UDim.new(0, 10),
-        Text = "Animation Indicators",
-        Enabled = true,
-        Parent = Container,
-
-        [Children] = {
-            BaseButton {
-                Size = UDim2.new(1, 0, 0, 30),
-                Text = "Create Bezier Animation",
-                Enabled = Scope:Computed(function(Use)
-                    local SelectedInstances = Use(States.RawSelection)
-
-                    return #Use(SelectedInstances) > 0
-                end),
-
-                Activated = function()
-                    local SelectedInstances = Peek(States.RawSelection)
-
-                    if #SelectedInstances == 0 then
-                        return
-                    end 
-
-                    local Indicator = EmitUtils:CreateNewAnimationIndicator(SelectedInstances[1], "Bezier")
-                    Selection:Set({Indicator})
-                end,
-            },
-
-            BaseButton {
-                Size = UDim2.new(1, 0, 0, 30),
-                Text = "Create Tween Animation",
-                Enabled = Scope:Computed(function(Use)
-                    local SelectedInstances = Use(States.RawSelection)
-
-                    return #Use(SelectedInstances) > 0
-                end),
-
-                Activated = function()
-                    local SelectedInstances = Peek(States.RawSelection)
-
-                    if #SelectedInstances == 0 then
-                        return
-                    end 
-
-                    local Indicator = EmitUtils:CreateNewAnimationIndicator(SelectedInstances[1], "Tween")
-                    Selection:Set({Indicator})
-                end,
-            },
-        }
-    }
-
-    -- local AssetLibrary = VerticalCollapsibleSection {
-    --     Name = "AssetLibrary",
-    --     Collapsed = true,
-    --     Padding = UDim.new(0, 10),
-    --     Text = "Asset Library",
-    --     Enabled = true,
-    --     Parent = Container,
-
-    --     [Children] = {
-    --         BaseButton {
-    --             Size = UDim2.new(1, 0, 0, 30),
-    --             Text = "Open Library",
-    --             Enabled = true,
-
-    --             Activated = function()
-    --                 LibraryWidget.Enabled = not LibraryWidget.Enabled
-    --             end,
-    --         },
-    --     }
-    -- }
-
-    local ProgrammerModules = VerticalCollapsibleSection {
-        Name = "ProgrammerModules",
-        Collapsed = true,
-        Padding = UDim.new(0, 10),
-        Text = "Programmer Resources",
-        Enabled = true,
-        Parent = Container,
-
-        [Children] = {
-            BaseButton {
-                Size = UDim2.new(1, 0, 0, 30),
-                Text = "Insert PlayEffect Module",
-                Enabled = Scope:Computed(function(Use)
-                    local SelectedInstances = Use(States.RawSelection)
-
-                    return #Use(SelectedInstances) > 0
-                end),
-
-                Activated = function()
-                    local SelectedInstances = Peek(States.RawSelection)
-
-                    if #SelectedInstances == 0 then
-                        return
-                    end
-
-                    local PlayEffectModule = Bin.PlaybackModules.PlayEffect:Clone()
-                    PlayEffectModule.Parent = SelectedInstances[1]
-                    Selection:Set({PlayEffectModule})
-                end,
-            },
-
-            BaseButton {
-                Size = UDim2.new(1, 0, 0, 30),
-                Text = "Insert Effect Module Template",
-                Enabled = Scope:Computed(function(Use)
-                    local SelectedInstances = Use(States.RawSelection)
-
-                    return #Use(SelectedInstances) > 0
-                end),
-
-                Activated = function()
-                    local SelectedInstances = Peek(States.RawSelection)
-
-                    if #SelectedInstances == 0 then
-                        return
-                    end
-
-                    local EffectModuleTemplate = Bin.PlaybackModules.EffectModuleTemplate:Clone()
-                    EffectModuleTemplate.Parent = SelectedInstances[1]
-                    Selection:Set({EffectModuleTemplate})
-                end,
-            }
-        }
-    }
-
-    EmitUtils:SetWidget(MainWidget)
+    if InterfaceScope then
+        InterfaceScope:Destroy()
+        InterfaceScope = nil
+    end
+
+    local Scope = Seam.Scope(Seam)
+    InterfaceScope = Scope
+
+    local MainWidget = Scope:New(Jian.Widget, {
+        WidgetId = "EffectDesignerSuite",
+        Title = "Effect Designer Suite",
+        InitialDockState = Enum.InitialDockState.Left,
+        InitialEnabled = false,
+        OverridePreviousState = false,
+        DefaultWidth = 320,
+        DefaultHeight = 480,
+        MinimumWidth = 320,
+        MinimumHeight = 320,
+    }) :: DockWidgetPluginGui
+
+    local HasEditableSelection = Scope:Computed(function(Use)
+        return #Use(States.CurrentlySelected) > 0
+    end)
+
+    local HasSingleSelection = Scope:Computed(function(Use)
+        return Use(States.IsEmittable) and #Use(States.CurrentlySelected) == 1
+    end)
+
+    local HasRawSelection = Scope:Computed(function(Use)
+        return #Use(States.RawSelection) > 0
+    end)
+
+    local SelectionSummary = Scope:Computed(function(Use)
+        local Selected = Use(States.CurrentlySelected)
+
+        if #Selected == 0 then
+            return "No valid emitters selected"
+        end
+
+        if #Selected == 1 then
+            return "Editing 1 valid object"
+        end
+
+        return string.format("Editing %d valid objects", #Selected)
+    end)
+
+    local EmitCountText = Scope:Value("")
+    local EmitDelayText = Scope:Value("")
+    local EmitDurationText = Scope:Value("")
+    local RepeatEmitDelayText = Scope:Value(tostring(States.RepeatEmitDelay.Value))
+    local CopyPropertyText = Scope:Value("Size")
+    local MathPropertyText = Scope:Value("Size")
+    local MathValueText = Scope:Value("3")
+    local CopiedValue = Scope:Value(nil)
 
     MainWidget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    LibraryWidget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-    --InitLibrary()
+    Scope:New(Jian.Background, {
+        Parent = MainWidget,
+    })
+
+    local Container = Scope:New(Jian.ScrollingList, {
+        Parent = MainWidget,
+        Size = UDim2.fromScale(1, 1),
+        ScrollBarThickness = 8,
+
+        [Seam.Children] = {
+            Scope:New("UIPadding", {
+                PaddingTop = UDim.new(0, 16),
+                PaddingBottom = UDim.new(0, 16),
+                PaddingLeft = UDim.new(0, 16),
+                PaddingRight = UDim.new(0, 16),
+            }),
+        },
+    })
+
+    Scope:New(Jian.Text, {
+        Parent = Container,
+        Text = SelectionSummary,
+        Size = UDim2.new(1, 0, 0, 22),
+        AutomaticSize = Enum.AutomaticSize.None,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = 0,
+        Active = HasEditableSelection,
+    })
+
+    local function CreateCorePropertyRow(LayoutOrder : number, LabelText : string, AttributeName : string, TextState)
+        local Row = CreateRow(Scope, LayoutOrder)
+
+        CreateLabel(Scope, Row, LabelText)
+
+        local TextBox = CreateBoundTextBox(
+            Scope,
+            Row,
+            TextState,
+            HasEditableSelection,
+            "0",
+            UDim2.fromScale(0.35, 0),
+            UDim2.fromScale(0.65, 1)
+        )
+
+        Scope:AddObject(TextBox.FocusLost:Connect(function()
+            local CurrentlySelected = States.CurrentlySelected.Value
+
+            if #CurrentlySelected == 0 then
+                return
+            end
+
+            local Number = tonumber(TextState.Value)
+
+            if not Number or Number == 0 then
+                return
+            end
+
+            for _, Instance in CurrentlySelected do
+                Instance:SetAttribute(AttributeName, Number)
+            end
+        end))
+
+        return Row
+    end
+
+    local CoreEmitCountRow = CreateCorePropertyRow(2, "Emit Count", "EmitCount", EmitCountText)
+    local CoreEmitDelayRow = CreateCorePropertyRow(3, "Emit Delay", "EmitDelay", EmitDelayText)
+    local CoreEmitDurationRow = CreateCorePropertyRow(4, "Emit Duration", "EmitDuration", EmitDurationText)
+
+    local EmitButton = CreateActionButton(Scope, 2, "Emit", States.IsEmittable, function()
+        EmitUtils:EmitCurrent()
+    end)
+
+    local RepeatRow = CreateRow(Scope, 3)
+    local RepeatDelayBox = CreateBoundTextBox(
+        Scope,
+        RepeatRow,
+        RepeatEmitDelayText,
+        States.RepeatEmit,
+        "Repeat delay",
+        UDim2.new(0, 0, 0, 0),
+        UDim2.fromScale(0.48, 1)
+    )
+
+    Scope:AddObject(RepeatDelayBox.FocusLost:Connect(function()
+        local Delay = tonumber(RepeatEmitDelayText.Value)
+
+        if not Delay then
+            RepeatEmitDelayText.Value = tostring(States.RepeatEmitDelay.Value)
+            return
+        end
+
+        States.RepeatEmitDelay.Value = Delay
+    end))
+
+    Scope:New(Jian.Checkbox, {
+        Parent = RepeatRow,
+        Position = UDim2.new(0.52, 0, 0, 8),
+        Size = UDim2.new(0.48, 0, 0, 20),
+        Title = "Repeat Emit",
+        Active = true,
+        Value = States.RepeatEmit,
+    })
+
+    local CopyPropertyBox = Scope:New(Jian.TextBox, {
+        LayoutOrder = 2,
+        Text = CopyPropertyText,
+        Active = States.IsEmittable,
+        PlaceholderText = "Property name",
+        Size = UDim2.new(1, 0, 0, 35),
+    })
+    BindTextBox(Scope, CopyPropertyBox, CopyPropertyText)
+    Scope:AddObject(CopyPropertyBox.FocusLost:Connect(function()
+        CopyPropertyText.Value = NormalizeParticleProperty(CopyPropertyText.Value)
+    end))
+
+    local CopyPasteButtons = CreateRow(Scope, 3)
+    Scope:New(Jian.TextButton, {
+        Parent = CopyPasteButtons,
+        Text = "Copy",
+        Active = HasSingleSelection,
+        Size = UDim2.fromScale(0.48, 1),
+        [Seam.OnEvent("Activated")] = function()
+            local SelectedInstances = States.CurrentlySelected.Value
+
+            if #SelectedInstances == 0 then
+                return
+            end
+
+            local FirstInstance = SelectedInstances[1]
+
+            if not FirstInstance:IsA("ParticleEmitter") then
+                return
+            end
+
+            local SelectedProperty = NormalizeParticleProperty(CopyPropertyText.Value)
+            local Success, Value = pcall(function()
+                return FirstInstance[SelectedProperty]
+            end)
+
+            if Success then
+                CopiedValue.Value = Value
+                CopyPropertyText.Value = SelectedProperty
+            end
+        end,
+    })
+
+    Scope:New(Jian.TextButton, {
+        Parent = CopyPasteButtons,
+        Text = "Paste",
+        Active = States.IsEmittable,
+        Position = UDim2.fromScale(0.52, 0),
+        Size = UDim2.fromScale(0.48, 1),
+        [Seam.OnEvent("Activated")] = function()
+            local SelectedInstances = States.CurrentlySelected.Value
+            local SelectedProperty = NormalizeParticleProperty(CopyPropertyText.Value)
+            local Value = CopiedValue.Value
+
+            if Value == nil then
+                return
+            end
+
+            for _, Instance in SelectedInstances do
+                if Instance:IsA("ParticleEmitter") then
+                    Instance[SelectedProperty] = Value
+                end
+            end
+        end,
+    })
+
+    local MathAmountRow = CreateRow(Scope, 2)
+    CreateLabel(Scope, MathAmountRow, "Amount")
+    CreateBoundTextBox(
+        Scope,
+        MathAmountRow,
+        MathValueText,
+        States.IsEmittable,
+        "3",
+        UDim2.fromScale(0.35, 0),
+        UDim2.fromScale(0.65, 1)
+    )
+
+    local MathPropertyRow = CreateRow(Scope, 3)
+    CreateLabel(Scope, MathPropertyRow, "Property")
+    local MathPropertyBox = CreateBoundTextBox(
+        Scope,
+        MathPropertyRow,
+        MathPropertyText,
+        States.IsEmittable,
+        "Size",
+        UDim2.fromScale(0.35, 0),
+        UDim2.fromScale(0.65, 1)
+    )
+
+    Scope:AddObject(MathPropertyBox.FocusLost:Connect(function()
+        MathPropertyText.Value = NormalizeParticleProperty(MathPropertyText.Value)
+    end))
+
+    local function RunMathOperation(Operation : string)
+        local Value = tonumber(MathValueText.Value)
+        local Property = NormalizeParticleProperty(MathPropertyText.Value)
+
+        ApplyMathOperation(Value, Property, Operation, States.CurrentlySelected.Value)
+        MathPropertyText.Value = Property
+    end
+
+    local MathAddButton = CreateActionButton(Scope, 4, "Add", States.IsEmittable, function()
+        RunMathOperation("add")
+    end)
+    local MathSubtractButton = CreateActionButton(Scope, 5, "Subtract", States.IsEmittable, function()
+        RunMathOperation("subtract")
+    end)
+    local MathMultiplyButton = CreateActionButton(Scope, 6, "Multiply", States.IsEmittable, function()
+        RunMathOperation("multiply")
+    end)
+    local MathDivideButton = CreateActionButton(Scope, 7, "Divide", States.IsEmittable, function()
+        RunMathOperation("divide")
+    end)
+
+    local CreateBezierAnimationButton = CreateActionButton(Scope, 2, "Create Bezier Animation", HasRawSelection, function()
+        local SelectedInstances = States.RawSelection.Value
+
+        if #SelectedInstances == 0 then
+            return
+        end
+
+        local Indicator = EmitUtils:CreateNewAnimationIndicator(SelectedInstances[1], "Bezier")
+        Selection:Set({Indicator})
+    end)
+
+    local CreateTweenAnimationButton = CreateActionButton(Scope, 3, "Create Tween Animation", HasRawSelection, function()
+        local SelectedInstances = States.RawSelection.Value
+
+        if #SelectedInstances == 0 then
+            return
+        end
+
+        local Indicator = EmitUtils:CreateNewAnimationIndicator(SelectedInstances[1], "Tween")
+        Selection:Set({Indicator})
+    end)
+
+    local InsertPlayEffectModuleButton = CreateActionButton(Scope, 2, "Insert PlayEffect Module", HasRawSelection, function()
+        local SelectedInstances = States.RawSelection.Value
+
+        if #SelectedInstances == 0 then
+            return
+        end
+
+        local PlayEffectModule = Bin.PlaybackModules.PlayEffect:Clone()
+        PlayEffectModule.Parent = SelectedInstances[1]
+        Selection:Set({PlayEffectModule})
+    end)
+
+    local InsertEffectModuleTemplateButton = CreateActionButton(Scope, 3, "Insert Effect Module Template", HasRawSelection, function()
+        local SelectedInstances = States.RawSelection.Value
+
+        if #SelectedInstances == 0 then
+            return
+        end
+
+        local EffectModuleTemplate = Bin.PlaybackModules.EffectModuleTemplate:Clone()
+        EffectModuleTemplate.Parent = SelectedInstances[1]
+        Selection:Set({EffectModuleTemplate})
+    end)
+
+    Scope:New(Jian.ListSection, {
+        Parent = Container,
+        LayoutOrder = 1,
+        Text = "Core Properties",
+        Active = true,
+        DefaultOpen = true,
+
+        [Seam.Children] = {
+            CoreEmitCountRow,
+            CoreEmitDelayRow,
+            CoreEmitDurationRow,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = Container,
+        LayoutOrder = 2,
+        Text = "Emit Actions",
+        Active = true,
+        DefaultOpen = true,
+
+        [Seam.Children] = {
+            EmitButton,
+            RepeatRow,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = Container,
+        LayoutOrder = 3,
+        Text = "Copy/Paste Properties",
+        Active = true,
+
+        [Seam.Children] = {
+            CopyPropertyBox,
+            CopyPasteButtons,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = Container,
+        LayoutOrder = 4,
+        Text = "Math Operations",
+        Active = true,
+
+        [Seam.Children] = {
+            MathAmountRow,
+            MathPropertyRow,
+            MathAddButton,
+            MathSubtractButton,
+            MathMultiplyButton,
+            MathDivideButton,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = Container,
+        LayoutOrder = 5,
+        Text = "Animation Indicators",
+        Active = true,
+
+        [Seam.Children] = {
+            CreateBezierAnimationButton,
+            CreateTweenAnimationButton,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = Container,
+        LayoutOrder = 6,
+        Text = "Programmer Resources",
+        Active = true,
+
+        [Seam.Children] = {
+            InsertPlayEffectModuleButton,
+            InsertEffectModuleTemplateButton,
+        },
+    })
+
+    local function RefreshCoreFields()
+        SyncSelectionAttribute(EmitCountText, "EmitCount")
+        SyncSelectionAttribute(EmitDelayText, "EmitDelay")
+        SyncSelectionAttribute(EmitDurationText, "EmitDuration")
+    end
+
+    RefreshCoreFields()
+    Scope:AddObject(Seam.OnChanged(States.PrimarySelected, RefreshCoreFields))
+    Scope:AddObject(Seam.OnChanged(States.RepeatEmitDelay, function()
+        RepeatEmitDelayText.Value = tostring(States.RepeatEmitDelay.Value)
+    end))
+    Scope:AddObject(Seam.OnChanged(States.RepeatEmit, function()
+        if States.RepeatEmit.Value then
+            EmitUtils:EnableRepeatEmit()
+        else
+            EmitUtils:DisableRepeatEmit()
+        end
+    end))
+
+    EmitUtils:SetWidget(MainWidget)
 
     return MainWidget
 end

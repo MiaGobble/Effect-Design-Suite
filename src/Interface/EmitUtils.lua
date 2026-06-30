@@ -6,11 +6,8 @@ local RunService = game:GetService("RunService")
 -- Imports
 local Bin = script.Parent.Parent
 local Objects = Bin:FindFirstChild("Objects")
-local Packages = Bin:FindFirstChild("Packages")
 local PlayEffect = require(Bin.PlaybackModules:FindFirstChild("PlayEffect"))
 local States = require(Objects:FindFirstChild("States"))
-local Fusion = require(Packages:FindFirstChild("Fusion"))
-local Peek = Fusion.peek
 
 -- Variables
 local RepeatEmitConnection = nil
@@ -21,11 +18,11 @@ function EmitUtils:SetWidget(...)
 end
 
 function EmitUtils:EmitCurrent(ForcedInstances : {Instance}?)
-    if not Peek(States.IsEmittable) and not ForcedInstances then
+    if not States.IsEmittable.Value and not ForcedInstances then
         return
     end
 
-    local SelectedInstances = ForcedInstances or Peek(States.CurrentlySelected)
+    local SelectedInstances = ForcedInstances or States.CurrentlySelected.Value
 
     for _, Instance in SelectedInstances do
         local _, WidgetParentPayload = PlayEffect(Instance, true)
@@ -55,7 +52,7 @@ function EmitUtils:EnableRepeatEmit()
 
     RepeatEmitConnection = RunService.Heartbeat:Connect(function()
         local Delta = os.clock() - LastEmit
-        local RepeatEmitDelay = Peek(States.RepeatEmitDelay)
+        local RepeatEmitDelay = States.RepeatEmitDelay.Value
 
         if RepeatEmitDelay <= 0 then
             return
@@ -65,8 +62,8 @@ function EmitUtils:EnableRepeatEmit()
             return
         end
 
-        if Peek(States.CurrentlySelected) and #Peek(States.CurrentlySelected) > 0 then
-            LastSelectedInstances = Peek(States.CurrentlySelected)
+        if States.CurrentlySelected.Value and #States.CurrentlySelected.Value > 0 then
+            LastSelectedInstances = States.CurrentlySelected.Value
         end
 
         LastEmit = os.clock()

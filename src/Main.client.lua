@@ -13,29 +13,27 @@ local RunService = game:GetService("RunService")
 
 
 -- Imports
-local Components = script.Parent:FindFirstChild("Components")
-local IconicDesign = Components:FindFirstChild("IconicDesign")
-local PluginComponents = IconicDesign:FindFirstChild("PluginComponents")
 local Objects = script.Parent:FindFirstChild("Objects")
 local Interface = require(script.Parent:FindFirstChild("Interface"))
-local Toolbar = require(PluginComponents:FindFirstChild("Toolbar"))
-local ToolbarButton = require(PluginComponents:FindFirstChild("ToolbarButton"))
 local States = require(Objects:FindFirstChild("States"))
 local StateOutput = require(script.Parent:FindFirstChild("StateOutput"))
-local Fusion = require(script.Parent:FindFirstChild("Packages"):FindFirstChild("Fusion"))
-local Peek = Fusion.peek
+local Packages = script.Parent:FindFirstChild("Packages")
+local Seam = require(Packages:FindFirstChild("Seam"))
+local Jian = require(Packages:FindFirstChild("Jian"))
+
+local Scope = Seam.Scope(Seam)
 
 -- Variables
-local ThisToolbar = Toolbar {
+local ThisToolbar = Scope:New(Jian.Toolbar, {
     Name = "Effect Designer Suite",
-}
+})
 
-local MainButton = ToolbarButton {
+local MainButton = Scope:New(Jian.ToolbarButton, {
     ToolTip = "",
     Name = "Open",
     Image = "rbxassetid://140043496156959",
     Toolbar = ThisToolbar,
-} :: PluginToolbarButton
+}) :: PluginToolbarButton
 
 local function Init()
     if RunService:IsRunning() or RunService:IsRunMode() then -- Don't init if running in studio
@@ -68,14 +66,16 @@ local function Init()
             end
         end
 
-        States.CurrentlySelected:set(ValidInstances)
-        States.IsEditable:set(#ValidInstances == 1)
-        States.IsEmittable:set(#ValidInstances >= 1)
-        States.PrimarySelected:set(if #ValidInstances == 1 then ValidInstances[1] else nil)
-        States.RawSelection:set(SelectedInstances or {})
+        States.CurrentlySelected.Value = ValidInstances
+        States.IsEditable.Value = #ValidInstances == 1
+        States.IsEmittable.Value = #ValidInstances >= 1
+        States.PrimarySelected.Value = if #ValidInstances == 1 then ValidInstances[1] else nil
+        States.RawSelection.Value = SelectedInstances or {}
 
-        if Peek(States.PrimarySelected) then
-            States.IsEffectModule:set(Peek(States.PrimarySelected):IsA("ModuleScript"))
+        if States.PrimarySelected.Value then
+            States.IsEffectModule.Value = States.PrimarySelected.Value:IsA("ModuleScript")
+        else
+            States.IsEffectModule.Value = false
         end
     end)
 end

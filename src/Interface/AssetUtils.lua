@@ -1,16 +1,7 @@
 local AssetUtils = {}
 
--- Services
-local RunService = game:GetService("RunService")
-
 -- Imports
 local Bin = script.Parent.Parent
-local Objects = Bin:FindFirstChild("Objects")
-local Packages = Bin:FindFirstChild("Packages")
-local States = require(Objects:FindFirstChild("States"))
-local Fusion = require(Packages:FindFirstChild("Fusion"))
-local Peek = Fusion.peek
-
 -- Variables
 local Assets = Bin:FindFirstChild("Assets")
 local Textures = Assets:FindFirstChild("Textures")
@@ -32,19 +23,19 @@ function AssetUtils:GetAllAssetCategories()
 end
 
 function AssetUtils:GetAssetsByCategory(Category)
-    local Assets = {}
+    local MatchingAssets = {}
 
     for _, Module in Textures:GetChildren() do
         local Collection = require(Module)
 
         for _, Asset in Collection do
             if Asset.Type == Category then
-                table.insert(Assets, Asset)
+                table.insert(MatchingAssets, Asset)
             end
         end
     end
 
-    return Assets
+    return MatchingAssets
 end
 
 return AssetUtils

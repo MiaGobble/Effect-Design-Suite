@@ -15,9 +15,7 @@ local Bin = script.Parent
 local Objects = Bin:FindFirstChild("Objects")
 local Packages = Bin:FindFirstChild("Packages")
 local States = require(Objects:FindFirstChild("States"))
-local Fusion = require(Packages:FindFirstChild("Fusion"))
-local Scope = Fusion.scoped(Fusion)
-local Peek = Fusion.peek
+local Seam = require(Packages:FindFirstChild("Seam"))
 
 -- Variables
 local Plugin = script:FindFirstAncestorWhichIsA("Plugin") :: Plugin
@@ -27,8 +25,8 @@ local function DeepCopyTableAsPeeked(Table : {[any] : any})
 
     for Key, Value in Table do
         if typeof(Value) == "table" then
-            if Value.scope then
-                Copy[Key] = Peek(Value)
+            if Seam.IsState(Value) then
+                Copy[Key] = Seam.GetValue(Value)
             else
                 Copy[Key] = DeepCopyTableAsPeeked(Value)
             end
@@ -45,7 +43,7 @@ local function DeepCopyTableAsStated(Table : {[any] : any})
 
     for Key, Value in Table do
         if typeof(Value) == "table" then
-            if Value.scope then
+            if Seam.IsState(Value) then
                 Copy[Key] = Value
             else
                 Copy[Key] = DeepCopyTableAsStated(Value)
@@ -59,7 +57,7 @@ local function DeepCopyTableAsStated(Table : {[any] : any})
 end
 
 local function GetUnprocessedValue(Index : string, Value : any?)
-    local DefaultValue = Peek(States[Index])
+    local DefaultValue = Seam.GetValue(States[Index])
 
     if Value == nil then
         return DefaultValue
@@ -80,19 +78,21 @@ local function GetUnprocessedValue(Index : string, Value : any?)
     return Value
 end
 
-local function GetProcessedValue(Index : string, Value : any?)
+local function GetProcessedValue(_Index : string, Value : any?)
     if Value == nil then
         return
     end
 
-    if typeof(Peek(Value)) == "table" then
-        local NewValue = DeepCopyTableAsPeeked(Peek(Value))
+    local RawValue = Seam.GetValue(Value)
+
+    if typeof(RawValue) == "table" then
+        local NewValue = DeepCopyTableAsPeeked(RawValue)
         local Encoded = HttpService:JSONEncode(NewValue)
 
         return Encoded
     end
 
-    return Peek(Value)
+    return RawValue
 end
 
 local function ProcessState(StateId : string, StateValue : any)
@@ -103,14 +103,14 @@ local function ProcessState(StateId : string, StateValue : any)
 
         if typeof(UnprocessedValue) == "table" then
             local NewValue = DeepCopyTableAsStated(UnprocessedValue)
-            States[StateId]:set(NewValue)
+            States[StateId].Value = NewValue
         else
-            States[StateId]:set(UnprocessedValue)
+            States[StateId].Value = UnprocessedValue
         end
     end
 
-    Scope:Observer(StateValue):onChange(function()
-        local NewValue = Peek(StateValue)
+    Seam.OnChanged(StateValue, function()
+        local NewValue = Seam.GetValue(StateValue)
         local ProcessedValue = GetProcessedValue(StateId, NewValue)
 
         Plugin:SetSetting(SETTING_INDEX_PRESET .. StateId, ProcessedValue)
