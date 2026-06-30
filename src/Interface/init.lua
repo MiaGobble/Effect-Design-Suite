@@ -357,7 +357,7 @@ function Interface:Init() : DockWidgetPluginGui
                             local Text = Peek(CorePropertyValues.EmitCount)
                             local Number = tonumber(Text)
         
-                            if not Number then
+                            if not Number or Number == 0 then
                                 return
                             end
         
@@ -416,7 +416,7 @@ function Interface:Init() : DockWidgetPluginGui
                             local Text = Peek(CorePropertyValues.EmitDelay)
                             local Number = tonumber(Text)
         
-                            if not Number then
+                            if not Number or Number == 0 then
                                 return
                             end
         
@@ -475,7 +475,7 @@ function Interface:Init() : DockWidgetPluginGui
                             local Text = Peek(CorePropertyValues.EmitDuration)
                             local Number = tonumber(Text)
         
-                            if not Number then
+                            if not Number or Number == 0 then
                                 return
                             end
         

@@ -51,6 +51,7 @@ local function Init()
     end)
 
     SelectionService.SelectionChanged:Connect(function()
+        task.wait()
         local SelectedInstances = SelectionService:Get()
         local ValidInstances = {}
 
