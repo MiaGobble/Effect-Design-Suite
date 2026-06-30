@@ -1,8 +1,9 @@
 [package]
-name = "c5599/effect-designer-suite"
+name = "mia-gobble/effect-designer-suite"
 version = "0.1.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
 
 [dependencies]
-Fusion = "elttob/fusion@0.3.0"
+Seam = "miagobble/seam@0.5.6"
+Jian = "miagobble/jian@0.1.1"
