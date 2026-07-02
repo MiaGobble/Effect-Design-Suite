@@ -1,5 +1,6 @@
 local SliderInput = {}
 
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Interface = script.Parent.Parent
@@ -33,6 +34,7 @@ function SliderInput:Construct(Scope, Properties)
     local Min = Properties.Min or 0
     local Max = Properties.Max or 1
     local AllowOutOfRangeText = Properties.AllowOutOfRangeText == true
+    local Step = Properties.Step
     local TrackRightInset = 96
 
     local function ReadActiveValue()
@@ -54,6 +56,15 @@ function SliderInput:Construct(Scope, Properties)
         end
 
         return string.format("%.2f", Rounded)
+    end
+
+    local function ApplyStep(Value)
+        if not Step or Step <= 0 then
+            return Value
+        end
+
+        local Steps = math.floor((Value / Step) + 0.5)
+        return Steps * Step
     end
 
     local Frame = Scope:New("Frame", {
@@ -131,21 +142,69 @@ function SliderInput:Construct(Scope, Properties)
         },
     })
 
-    local function UpdateFromPosition(PositionX)
-        if not Properties.Value then
-            return
+    local LastTrackLocalX = 0
+    local DragConnection = nil
+
+    Scope:AddObject(SliderTrack.MouseMoved:Connect(function(X)
+        LastTrackLocalX = X
+    end))
+
+    local function IsMouse1Down()
+        for _, InputType in UserInputService:GetMouseButtonsPressed() do
+            if InputType == Enum.UserInputType.MouseButton1 then
+                return true
+            end
         end
 
+        return false
+    end
+
+    local function GetCurrentMousePosition()
+        local Widget = SliderTrack:FindFirstAncestorWhichIsA("DockWidgetPluginGui")
+
+        if Widget then
+            return Widget:GetRelativeMousePosition().X
+        end
+
+        return UserInputService:GetMouseLocation().X
+    end
+
+    local function ProcessInput(PositionX)
         local AbsolutePosition = SliderTrack.AbsolutePosition.X
-        local AbsoluteSize = SliderTrack.AbsoluteSize.X
-
-        if AbsoluteSize <= 0 then
-            return
-        end
-
+        local AbsoluteSize = math.max(1, SliderTrack.AbsoluteSize.X)
         local Alpha = Clamp01((PositionX - AbsolutePosition) / AbsoluteSize)
         local Value = Min + (Max - Min) * Alpha
-        Properties.Value.Value = Value
+
+        if Properties.Value then
+            Properties.Value.Value = ApplyStep(Value)
+        end
+    end
+
+    local function StopDrag()
+        self.Dragging.Value = false
+
+        if DragConnection then
+            DragConnection:Disconnect()
+            DragConnection = nil
+        end
+    end
+
+    local function StartDrag()
+        self.Dragging.Value = true
+
+        if DragConnection then
+            DragConnection:Disconnect()
+            DragConnection = nil
+        end
+
+        DragConnection = RunService.Heartbeat:Connect(function()
+            if not IsMouse1Down() then
+                StopDrag()
+                return
+            end
+
+            ProcessInput(GetCurrentMousePosition())
+        end)
     end
 
     Scope:New("TextButton", {
@@ -160,8 +219,13 @@ function SliderInput:Construct(Scope, Properties)
                 return
             end
 
-            self.Dragging.Value = true
-            UpdateFromPosition(UserInputService:GetMouseLocation().X)
+            if Properties.Value then
+                local Width = math.max(1, SliderTrack.AbsoluteSize.X)
+                local Alpha = Clamp01(LastTrackLocalX / Width)
+                Properties.Value.Value = ApplyStep(Min + (Max - Min) * Alpha)
+            end
+
+            StartDrag()
         end,
     })
 
@@ -174,12 +238,12 @@ function SliderInput:Construct(Scope, Properties)
             return
         end
 
-        UpdateFromPosition(Input.Position.X)
+        ProcessInput(Input.Position.X)
     end))
 
     Scope:AddObject(UserInputService.InputEnded:Connect(function(Input)
         if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-            self.Dragging.Value = false
+            StopDrag()
         end
     end))
 
@@ -211,6 +275,8 @@ function SliderInput:Construct(Scope, Properties)
         if not AllowOutOfRangeText then
             NumberValue = math.clamp(NumberValue, Min, Max)
         end
+
+        NumberValue = ApplyStep(NumberValue)
 
         if Properties.Value then
             Properties.Value.Value = NumberValue

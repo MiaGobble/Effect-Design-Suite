@@ -1,5 +1,6 @@
 local ColorPicker = {}
 
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Interface = script.Parent.Parent
@@ -27,7 +28,7 @@ function ColorPicker:Init(Scope, Properties)
     self.H = Scope:Value(0)
     self.S = Scope:Value(0)
     self.V = Scope:Value(1)
-    self.IsDraggingBox = Scope:Value(false)
+    self.IsDraggingPicker = Scope:Value(false)
     self.IsDraggingValue = Scope:Value(false)
 
     local Initial = Properties.Value and Properties.Value.Value or Color3.new(1, 1, 1)
@@ -37,6 +38,7 @@ end
 function ColorPicker:Construct(Scope, Properties)
     local PickerSize = 170
     local ValueSliderWidth = 18
+    local DragConnection = nil
 
     local Frame = Scope:New("Frame", {
         Parent = Properties.Parent,
@@ -51,7 +53,7 @@ function ColorPicker:Construct(Scope, Properties)
         Parent = Frame,
         Position = UDim2.fromOffset(0, 0),
         Size = UDim2.new(1, -ValueSliderWidth - 8, 0, PickerSize),
-        BackgroundColor3 = Color3.fromRGB(255, 0, 0),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
         BorderSizePixel = 0,
         ClipsDescendants = true,
 
@@ -90,15 +92,18 @@ function ColorPicker:Construct(Scope, Properties)
                     }),
                 },
             }),
-            Scope:New("Frame", {
-                Size = UDim2.fromScale(1, 1),
-                BackgroundColor3 = Color3.new(0, 0, 0),
-                BackgroundTransparency = Scope:Computed(function(Use)
-                    return Use(self.V)
-                end),
-                BorderSizePixel = 0,
-            }),
         },
+    })
+
+    local PickerHitbox = Scope:New("TextButton", {
+        Parent = PickerFrame,
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        Active = true,
+        ZIndex = 5,
     })
 
     Scope:New("Frame", {
@@ -106,10 +111,11 @@ function ColorPicker:Construct(Scope, Properties)
         Size = UDim2.fromOffset(10, 10),
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = Scope:Computed(function(Use)
-            return UDim2.fromScale(Use(self.H), 1 - Use(self.S))
+            return UDim2.fromScale(1 - Use(self.H), 1 - Use(self.S))
         end),
         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
         BorderSizePixel = 0,
+        ZIndex = 6,
 
         [Seam.Children] = {
             Scope:New("UICorner", {
@@ -152,6 +158,17 @@ function ColorPicker:Construct(Scope, Properties)
         },
     })
 
+    local ValueHitbox = Scope:New("TextButton", {
+        Parent = ValueSlider,
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        Active = true,
+        ZIndex = 5,
+    })
+
     Scope:New("Frame", {
         Parent = ValueSlider,
         Size = UDim2.new(1, 0, 0, 2),
@@ -161,6 +178,7 @@ function ColorPicker:Construct(Scope, Properties)
         end),
         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
         BorderSizePixel = 0,
+        ZIndex = 6,
     })
 
     Scope:New("TextLabel", {
@@ -180,66 +198,87 @@ function ColorPicker:Construct(Scope, Properties)
         end),
     })
 
-    local function UpdateFromPicker(Input)
-        local Relative = Vector2.new(Input.Position.X, Input.Position.Y) - PickerFrame.AbsolutePosition
+    local function UpdateFromPickerMouse(MouseLocation)
+        local Relative = MouseLocation - PickerFrame.AbsolutePosition
         local Width = math.max(1, PickerFrame.AbsoluteSize.X)
         local Height = math.max(1, PickerFrame.AbsoluteSize.Y)
 
-        self.H.Value = Clamp01(Relative.X / Width)
+        self.H.Value = Clamp01(1 - (Relative.X / Width))
         self.S.Value = Clamp01(1 - (Relative.Y / Height))
     end
 
-    local function UpdateFromValueSlider(Input)
-        local RelativeY = Input.Position.Y - ValueSlider.AbsolutePosition.Y
+    local function UpdateFromValueMouse(MouseLocation)
+        local RelativeY = MouseLocation.Y - ValueSlider.AbsolutePosition.Y
         local Height = math.max(1, ValueSlider.AbsoluteSize.Y)
         self.V.Value = Clamp01(1 - (RelativeY / Height))
     end
 
-    Scope:AddObject(PickerFrame.InputBegan:Connect(function(Input)
+    local function IsMouse1Down()
+        for _, InputType in UserInputService:GetMouseButtonsPressed() do
+            if InputType == Enum.UserInputType.MouseButton1 then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    local function StopDragging()
+        self.IsDraggingPicker.Value = false
+        self.IsDraggingValue.Value = false
+
+        if DragConnection then
+            DragConnection:Disconnect()
+            DragConnection = nil
+        end
+    end
+
+    local function BeginDrag(Mode)
+        if DragConnection then
+            DragConnection:Disconnect()
+            DragConnection = nil
+        end
+
+        self.IsDraggingPicker.Value = Mode == "Picker"
+        self.IsDraggingValue.Value = Mode == "Value"
+
+        DragConnection = RunService.Heartbeat:Connect(function()
+            if not IsMouse1Down() then
+                StopDragging()
+                return
+            end
+
+            local MouseLocation = UserInputService:GetMouseLocation()
+            if self.IsDraggingPicker.Value then
+                UpdateFromPickerMouse(MouseLocation)
+            elseif self.IsDraggingValue.Value then
+                UpdateFromValueMouse(MouseLocation)
+            end
+        end)
+    end
+
+    Scope:AddObject(PickerHitbox.MouseButton1Down:Connect(function()
         if not ReadActiveValue(Properties.Active) then
             return
         end
 
-        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-            return
-        end
-
-        self.IsDraggingBox.Value = true
-        UpdateFromPicker(Input)
+        UpdateFromPickerMouse(UserInputService:GetMouseLocation())
+        BeginDrag("Picker")
     end))
 
-    Scope:AddObject(ValueSlider.InputBegan:Connect(function(Input)
+    Scope:AddObject(ValueHitbox.MouseButton1Down:Connect(function()
         if not ReadActiveValue(Properties.Active) then
             return
         end
 
-        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-            return
-        end
-
-        self.IsDraggingValue.Value = true
-        UpdateFromValueSlider(Input)
-    end))
-
-    Scope:AddObject(UserInputService.InputChanged:Connect(function(Input)
-        if Input.UserInputType ~= Enum.UserInputType.MouseMovement then
-            return
-        end
-
-        if self.IsDraggingBox.Value then
-            UpdateFromPicker(Input)
-        elseif self.IsDraggingValue.Value then
-            UpdateFromValueSlider(Input)
-        end
+        UpdateFromValueMouse(UserInputService:GetMouseLocation())
+        BeginDrag("Value")
     end))
 
     Scope:AddObject(UserInputService.InputEnded:Connect(function(Input)
-        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-            return
+        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            StopDragging()
         end
-
-        self.IsDraggingBox.Value = false
-        self.IsDraggingValue.Value = false
     end))
 
     local function UpdateExternal()
@@ -253,6 +292,15 @@ function ColorPicker:Construct(Scope, Properties)
     Scope:AddObject(Seam.OnChanged(self.H, UpdateExternal))
     Scope:AddObject(Seam.OnChanged(self.S, UpdateExternal))
     Scope:AddObject(Seam.OnChanged(self.V, UpdateExternal))
+
+    if Properties.Value then
+        Scope:AddObject(Seam.OnChanged(Properties.Value, function()
+            local H, S, V = Properties.Value.Value:ToHSV()
+            self.H.Value = H
+            self.S.Value = S
+            self.V.Value = V
+        end))
+    end
 
     return Frame
 end

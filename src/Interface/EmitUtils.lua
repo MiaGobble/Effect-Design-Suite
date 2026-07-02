@@ -102,6 +102,22 @@ local function DrawPathSegment(FromPosition : Vector3, ToPosition : Vector3, Par
     Beam.Parent = Parent
 end
 
+local function EvaluateBezier(ControlPoints : {Vector3}, T : number)
+    local Working = table.clone(ControlPoints)
+
+    while #Working > 1 do
+        local NextWorking = {}
+
+        for Index = 1, #Working - 1 do
+            table.insert(NextWorking, Working[Index]:Lerp(Working[Index + 1], T))
+        end
+
+        Working = NextWorking
+    end
+
+    return Working[1]
+end
+
 local function BuildIndicatorPathPreview(AnimationIndicator : StringValue, Parent : Instance)
     if not AnimationIndicator.Parent then
         return
@@ -142,8 +158,14 @@ local function BuildIndicatorPathPreview(AnimationIndicator : StringValue, Paren
 
         table.insert(Points, Target.WorldPosition)
 
-        for Index = 1, #Points - 1 do
-            DrawPathSegment(Points[Index], Points[Index + 1], Parent)
+        local Last = Points[1]
+        local Steps = 50
+
+        for Step = 1, Steps do
+            local T = Step / Steps
+            local Current = EvaluateBezier(Points, T)
+            DrawPathSegment(Last, Current, Parent)
+            Last = Current
         end
     end
 end
