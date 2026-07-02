@@ -19,13 +19,21 @@ end
 
 function ColorPicker:Construct(Scope, Properties)
     local Frame = Scope:New("Frame", {
+        Parent = Properties.Parent,
+        LayoutOrder = Properties.LayoutOrder,
+        Position = Properties.Position,
+        AnchorPoint = Properties.AnchorPoint,
         Size = Properties.Size or UDim2.new(1, 0, 0, 198),
         BackgroundTransparency = 1,
 
         [Seam.Children] = {
+            Scope:New("UIListLayout", {
+                FillDirection = Enum.FillDirection.Vertical,
+                SortOrder = Enum.SortOrder.LayoutOrder,
+                Padding = UDim.new(0, 6),
+            }),
             Scope:New(SliderInput, {
                 LayoutOrder = 1,
-                Position = UDim2.fromOffset(0, 0),
                 Size = UDim2.new(1, 0, 0, 58),
                 Title = "R",
                 Min = 0,
@@ -35,7 +43,6 @@ function ColorPicker:Construct(Scope, Properties)
             }),
             Scope:New(SliderInput, {
                 LayoutOrder = 2,
-                Position = UDim2.fromOffset(0, 62),
                 Size = UDim2.new(1, 0, 0, 58),
                 Title = "G",
                 Min = 0,
@@ -45,7 +52,6 @@ function ColorPicker:Construct(Scope, Properties)
             }),
             Scope:New(SliderInput, {
                 LayoutOrder = 3,
-                Position = UDim2.fromOffset(0, 124),
                 Size = UDim2.new(1, 0, 0, 58),
                 Title = "B",
                 Min = 0,
@@ -54,22 +60,53 @@ function ColorPicker:Construct(Scope, Properties)
                 Active = Properties.Active,
             }),
             Scope:New("Frame", {
-                Position = UDim2.new(1, -42, 0, 0),
-                Size = UDim2.fromOffset(42, 42),
+                LayoutOrder = 4,
+                Size = UDim2.new(1, 0, 0, 24),
+                BackgroundTransparency = 1,
+
+                [Seam.Children] = {
+                    Scope:New("Frame", {
+                        Position = UDim2.fromOffset(0, 0),
+                        Size = UDim2.fromOffset(24, 24),
+                        BackgroundColor3 = Scope:Computed(function(Use)
+                            return Color3.fromRGB(Use(self.R), Use(self.G), Use(self.B))
+                        end),
+                        BorderSizePixel = 0,
+
+                        [Seam.Children] = {
+                            Scope:New("UICorner", {
+                                CornerRadius = UDim.new(0, 6),
+                            }),
+                            Scope:New("UIStroke", {
+                                Color = Color3.fromRGB(56, 56, 56),
+                                Thickness = 1,
+                            }),
+                        },
+                    }),
+                    Scope:New("TextLabel", {
+                        Position = UDim2.fromOffset(32, 0),
+                        Size = UDim2.new(1, -32, 1, 0),
+                        BackgroundTransparency = 1,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        FontFace = Font.fromName("SourceSans"),
+                        TextSize = 12,
+                        TextColor3 = Color3.fromRGB(235, 235, 235),
+                        Text = Scope:Computed(function(Use)
+                            local R = math.clamp(Use(self.R), 0, 255)
+                            local G = math.clamp(Use(self.G), 0, 255)
+                            local B = math.clamp(Use(self.B), 0, 255)
+                            return string.format("RGB(%d, %d, %d)", R, G, B)
+                        end),
+                    }),
+                },
+            }),
+            Scope:New("Frame", {
+                LayoutOrder = 5,
+                Size = UDim2.new(1, 0, 0, 2),
                 BackgroundColor3 = Scope:Computed(function(Use)
                     return Color3.fromRGB(Use(self.R), Use(self.G), Use(self.B))
                 end),
                 BorderSizePixel = 0,
-
-                [Seam.Children] = {
-                    Scope:New("UICorner", {
-                        CornerRadius = UDim.new(0, 6),
-                    }),
-                    Scope:New("UIStroke", {
-                        Color = Color3.fromRGB(56, 56, 56),
-                        Thickness = 1,
-                    }),
-                },
             }),
         },
     })

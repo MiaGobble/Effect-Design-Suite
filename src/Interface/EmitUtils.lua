@@ -54,26 +54,52 @@ local function ClearPathPreview()
 end
 
 local function DrawPathSegment(FromPosition : Vector3, ToPosition : Vector3, Parent : Instance)
-    local Segment = Instance.new("Part")
-    Segment.Name = "PathSegment"
-    Segment.Anchored = true
-    Segment.CanCollide = false
-    Segment.CanTouch = false
-    Segment.CanQuery = false
-    Segment.Material = Enum.Material.Neon
-    Segment.Color = Color3.fromRGB(70, 180, 255)
-
     local Delta = ToPosition - FromPosition
     local Length = Delta.Magnitude
 
     if Length <= 0.001 then
-        Segment:Destroy()
         return
     end
 
-    Segment.Size = Vector3.new(0.06, 0.06, Length)
-    Segment.CFrame = CFrame.lookAt((FromPosition + ToPosition) * 0.5, ToPosition)
-    Segment.Parent = Parent
+    local StartPart = Instance.new("Part")
+    StartPart.Name = "PathStart"
+    StartPart.Anchored = true
+    StartPart.CanCollide = false
+    StartPart.CanTouch = false
+    StartPart.CanQuery = false
+    StartPart.Transparency = 1
+    StartPart.Size = Vector3.new(0.1, 0.1, 0.1)
+    StartPart.CFrame = CFrame.new(FromPosition)
+    StartPart.Parent = Parent
+
+    local EndPart = Instance.new("Part")
+    EndPart.Name = "PathEnd"
+    EndPart.Anchored = true
+    EndPart.CanCollide = false
+    EndPart.CanTouch = false
+    EndPart.CanQuery = false
+    EndPart.Transparency = 1
+    EndPart.Size = Vector3.new(0.1, 0.1, 0.1)
+    EndPart.CFrame = CFrame.new(ToPosition)
+    EndPart.Parent = Parent
+
+    local StartAttachment = Instance.new("Attachment")
+    StartAttachment.Parent = StartPart
+
+    local EndAttachment = Instance.new("Attachment")
+    EndAttachment.Parent = EndPart
+
+    local Beam = Instance.new("Beam")
+    Beam.Name = "PathSegment"
+    Beam.Attachment0 = StartAttachment
+    Beam.Attachment1 = EndAttachment
+    Beam.Width0 = 0.045
+    Beam.Width1 = 0.045
+    Beam.Color = ColorSequence.new(Color3.fromRGB(70, 180, 255))
+    Beam.Brightness = 2
+    Beam.LightEmission = 1
+    Beam.FaceCamera = true
+    Beam.Parent = Parent
 end
 
 local function BuildIndicatorPathPreview(AnimationIndicator : StringValue, Parent : Instance)
@@ -105,8 +131,8 @@ local function BuildIndicatorPathPreview(AnimationIndicator : StringValue, Paren
         end
 
         table.sort(Midpoints, function(Left, Right)
-            local LeftIndex = tonumber(Left.Name:gsub("Midpoint", "")) or 0
-            local RightIndex = tonumber(Right.Name:gsub("Midpoint", "")) or 0
+            local LeftIndex = tonumber(Left.Name:match("^Midpoint(%d+)$")) or 0
+            local RightIndex = tonumber(Right.Name:match("^Midpoint(%d+)$")) or 0
             return LeftIndex < RightIndex
         end)
 

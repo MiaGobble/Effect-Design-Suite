@@ -1,74 +1,5 @@
 local Interface = {}
 
-local PARTICLE_PROPERTIES = {
-    "Size",
-    "Color",
-    "Transparency",
-    "Speed",
-    "Acceleration",
-    "Lifetime",
-    "Rate",
-    "SpreadAngle",
-    "LightEmission",
-    "LightInfluence",
-    "Texture",
-}
-
-local COPY_PROPERTIES_BY_CLASS = {
-    ParticleEmitter = {
-        "Size",
-        "Color",
-        "Transparency",
-        "Speed",
-        "Acceleration",
-        "Lifetime",
-        "Rate",
-        "LightEmission",
-        "LightInfluence",
-        "Texture",
-    },
-    Beam = {
-        "Color",
-        "Transparency",
-        "Width0",
-        "Width1",
-        "Texture",
-        "TextureLength",
-        "TextureSpeed",
-        "Brightness",
-    },
-    Trail = {
-        "Color",
-        "Transparency",
-        "WidthScale",
-        "Texture",
-        "Brightness",
-    },
-    Attachment = {
-        "Position",
-        "Orientation",
-        "Axis",
-        "SecondaryAxis",
-    },
-}
-
-local CURVE_PROPERTIES_BY_CLASS = {
-    ParticleEmitter = {
-        "Size",
-        "Transparency",
-        "Squash",
-    },
-    Beam = {
-        "Transparency",
-        "WidthScale",
-    },
-    Trail = {
-        "Transparency",
-        "WidthScale",
-    },
-    Attachment = {},
-}
-
 local Selection = game:GetService("Selection")
 local RunService = game:GetService("RunService")
 
@@ -81,202 +12,16 @@ local States = require(Objects:FindFirstChild("States"))
 local Seam = require(Packages:FindFirstChild("Seam"))
 local Jian = require(Packages:FindFirstChild("Jian"))
 local Components = script:FindFirstChild("Components")
+local Modules = script:FindFirstChild("Modules")
+local PropertyMaps = require(Modules:FindFirstChild("PropertyMaps"))
+local EffectOps = require(Modules:FindFirstChild("EffectOps"))
+local VfxApiInjection = require(Modules:FindFirstChild("VfxApiInjection"))
 local Dropdown = require(Components:FindFirstChild("Dropdown"))
 local SliderInput = require(Components:FindFirstChild("SliderInput"))
 local CurveEditor = require(Components:FindFirstChild("CurveEditor"))
 local ColorPicker = require(Components:FindFirstChild("ColorPicker"))
 
 local InterfaceScope = nil
-
-local function NormalizeParticleProperty(PropertyName : string)
-    local LowerName = PropertyName:lower()
-
-    for _, Property in PARTICLE_PROPERTIES do
-        if Property:lower():sub(1, #LowerName) == LowerName then
-            return Property
-        end
-    end
-
-    return PropertyName
-end
-
-local function GetSelectionClass(Instances : {Instance})
-    if not Instances or #Instances == 0 then
-        return nil
-    end
-
-    local First = Instances[1]
-
-    if COPY_PROPERTIES_BY_CLASS[First.ClassName] then
-        return First.ClassName
-    end
-
-    return nil
-end
-
-local function GetPropertiesForSelection(Instances : {Instance}, PropertyMap)
-    local ClassName = GetSelectionClass(Instances)
-
-    if not ClassName then
-        return {}
-    end
-
-    return PropertyMap[ClassName] or {}
-end
-
-local function ScaleValueByMultiplier(Value, Multiplier : number)
-    local ValueType = typeof(Value)
-
-    if ValueType == "number" then
-        return Value * Multiplier
-    end
-
-    if ValueType == "NumberRange" then
-        return NumberRange.new(Value.Min * Multiplier, Value.Max * Multiplier)
-    end
-
-    if ValueType == "NumberSequence" then
-        local Keypoints = {}
-
-        for _, Keypoint in Value.Keypoints do
-            table.insert(Keypoints, NumberSequenceKeypoint.new(
-                Keypoint.Time,
-                Keypoint.Value * Multiplier,
-                Keypoint.Envelope * Multiplier
-            ))
-        end
-
-        return NumberSequence.new(Keypoints)
-    end
-
-    if ValueType == "Vector3" then
-        return Value * Multiplier
-    end
-
-    return Value
-end
-
-local function ShiftColorSequenceToTarget(Sequence : ColorSequence, TargetColor : Color3)
-    local Keypoints = Sequence.Keypoints
-
-    if #Keypoints == 0 then
-        return Sequence
-    end
-
-    local BaseColor = Keypoints[1].Value
-    local BaseHue, BaseSaturation, BaseValue = BaseColor:ToHSV()
-    local TargetHue, TargetSaturation, TargetValue = TargetColor:ToHSV()
-
-    local HueDelta = TargetHue - BaseHue
-    local SaturationDelta = TargetSaturation - BaseSaturation
-    local ValueDelta = TargetValue - BaseValue
-
-    local NewKeypoints = {}
-
-    for _, Keypoint in Keypoints do
-        local Hue, Saturation, Brightness = Keypoint.Value:ToHSV()
-
-        table.insert(NewKeypoints, ColorSequenceKeypoint.new(
-            Keypoint.Time,
-            Color3.fromHSV(
-                (Hue + HueDelta) % 1,
-                math.clamp(Saturation + SaturationDelta, 0, 1),
-                math.clamp(Brightness + ValueDelta, 0, 1)
-            )
-        ))
-    end
-
-    return ColorSequence.new(NewKeypoints)
-end
-
-local function ApplyResizeMultiplier(Multiplier : number, Instances : {Instance})
-    if not Multiplier then
-        return
-    end
-
-    for _, Instance in Instances do
-        if Instance:IsA("ParticleEmitter") then
-            Instance.Size = ScaleValueByMultiplier(Instance.Size, Multiplier)
-        elseif Instance:IsA("Beam") then
-            Instance.Width0 = Instance.Width0 * Multiplier
-            Instance.Width1 = Instance.Width1 * Multiplier
-        elseif Instance:IsA("Trail") then
-            Instance.WidthScale = ScaleValueByMultiplier(Instance.WidthScale, Multiplier)
-        elseif Instance:IsA("Attachment") then
-            Instance.Position = Instance.Position * Multiplier
-        end
-    end
-end
-
-local function BuildNumberSequenceFromCurve(Points : {{Time : number, Value : number}}, MaxRange : number)
-    local Sorted = table.clone(Points)
-    table.sort(Sorted, function(Left, Right)
-        return Left.Time < Right.Time
-    end)
-
-    local Keypoints = {}
-
-    for _, Point in Sorted do
-        table.insert(Keypoints, NumberSequenceKeypoint.new(
-            math.clamp(Point.Time, 0, 1),
-            math.clamp(Point.Value, 0, 1) * MaxRange
-        ))
-    end
-
-    return NumberSequence.new(Keypoints)
-end
-
-local function EnsureSharedPlayEffectApi(BinFolder : Instance)
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local StarterPlayer = game:GetService("StarterPlayer")
-    local ServerScriptService = game:GetService("ServerScriptService")
-
-    local Container = ReplicatedStorage:FindFirstChild("EffectDesignerSuite")
-    if not Container then
-        Container = Instance.new("Folder")
-        Container.Name = "EffectDesignerSuite"
-        Container.Parent = ReplicatedStorage
-    end
-
-    local PlayEffectModule = Container:FindFirstChild("PlayEffect")
-    if not PlayEffectModule then
-        PlayEffectModule = BinFolder.PlaybackModules.PlayEffect:Clone()
-        PlayEffectModule.Name = "PlayEffect"
-        PlayEffectModule.Parent = Container
-    end
-
-    local SharedClientScript = StarterPlayer.StarterPlayerScripts:FindFirstChild("EDSSharedPlayEffect.client")
-    if not SharedClientScript then
-        SharedClientScript = Instance.new("LocalScript")
-        SharedClientScript.Name = "EDSSharedPlayEffect.client"
-        SharedClientScript.Source = [[
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SharedFolder = ReplicatedStorage:WaitForChild("EffectDesignerSuite")
-local PlayEffect = require(SharedFolder:WaitForChild("PlayEffect"))
-
-shared.PlayEffect = function(Target)
-    return PlayEffect(Target)
-end
-]]
-        SharedClientScript.Parent = StarterPlayer.StarterPlayerScripts
-    end
-
-    local SharedServerScript = ServerScriptService:FindFirstChild("EDSSharedPlayEffect.server")
-    if not SharedServerScript then
-        SharedServerScript = Instance.new("Script")
-        SharedServerScript.Name = "EDSSharedPlayEffect.server"
-        SharedServerScript.Source = [[
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SharedFolder = ReplicatedStorage:WaitForChild("EffectDesignerSuite")
-local PlayEffect = require(SharedFolder:WaitForChild("PlayEffect"))
-
-shared.PlayEffect = function(Target)
-    return PlayEffect(Target)
-end
-]]
-        SharedServerScript.Parent = ServerScriptService
-    end
-end
 
 local function FormatTextureId(TextureId : number | string)
     return "rbxassetid://" .. tostring(TextureId)
@@ -442,93 +187,6 @@ local function CreateAssetCard(Scope, PreviewEntries, Asset, LayoutOrder : numbe
     return Card
 end
 
-local function ApplyMathOperation(Value: number, Property: string, Operation: string, Instances: {Instance})
-    if not Value or Property == "" then
-        return
-    end
-
-    for _, Instance in Instances do
-        if not (Instance:IsA("ParticleEmitter") and Instance[Property]) then
-            continue
-        end
-
-        local PropertyType = typeof(Instance[Property])
-
-        if PropertyType == "NumberSequence" then
-            local OldSequence = Instance[Property]
-            local NewKeypoints = {}
-
-            for _, Keypoint in OldSequence.Keypoints do
-                local NewValue, NewEnvelope
-
-                if Operation == "add" then
-                    NewValue = Keypoint.Value + Value
-                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope + Value)
-                elseif Operation == "subtract" then
-                    NewValue = Keypoint.Value - Value
-                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope - Value)
-                elseif Operation == "multiply" then
-                    NewValue = Keypoint.Value * Value
-                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope * Value)
-                elseif Operation == "divide" then
-                    if Value == 0 then
-                        continue
-                    end
-
-                    NewValue = Keypoint.Value / Value
-                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope / Value)
-                end
-
-                table.insert(NewKeypoints, NumberSequenceKeypoint.new(
-                    Keypoint.Time,
-                    NewValue,
-                    NewEnvelope
-                ))
-            end
-
-            Instance[Property] = NumberSequence.new(NewKeypoints)
-        elseif PropertyType == "NumberRange" then
-            local OldMin = Instance[Property].Min
-            local OldMax = Instance[Property].Max
-            local NewMin, NewMax
-
-            if Operation == "add" then
-                NewMin = OldMin + Value
-                NewMax = OldMax + Value
-            elseif Operation == "subtract" then
-                NewMin = OldMin - Value
-                NewMax = OldMax - Value
-            elseif Operation == "multiply" then
-                NewMin = OldMin * Value
-                NewMax = OldMax * Value
-            elseif Operation == "divide" then
-                if Value == 0 then
-                    continue
-                end
-
-                NewMin = OldMin / Value
-                NewMax = OldMax / Value
-            end
-
-            Instance[Property] = NumberRange.new(NewMin, NewMax)
-        elseif PropertyType == "number" then
-            if Operation == "add" then
-                Instance[Property] = Instance[Property] + Value
-            elseif Operation == "subtract" then
-                Instance[Property] = Instance[Property] - Value
-            elseif Operation == "multiply" then
-                Instance[Property] = Instance[Property] * Value
-            elseif Operation == "divide" then
-                if Value == 0 then
-                    continue
-                end
-
-                Instance[Property] = Instance[Property] / Value
-            end
-        end
-    end
-end
-
 local function CreateRow(Scope, LayoutOrder : number, Children : {any}?)
     return Scope:New("Frame", {
         BackgroundTransparency = 1,
@@ -662,10 +320,9 @@ function Interface:Init() : DockWidgetPluginGui
     local EmitDurationText = Scope:Value("")
     local RepeatEmitDelayText = Scope:Value(tostring(States.RepeatEmitDelay.Value))
     local CopyPropertyText = Scope:Value("Size")
-    local CopyAmountValue = Scope:Value(1)
-    local ResizeMultiplierText = Scope:Value("1")
+    local ResizeMultiplierValue = Scope:Value(1)
     local MathPropertyText = Scope:Value("Size")
-    local MathValueText = Scope:Value("3")
+    local MathAmountValue = Scope:Value(3)
     local CurvePropertyText = Scope:Value("")
     local CurveMaxRangeText = Scope:Value("10")
     local CurvePoints = Scope:Value({
@@ -1245,11 +902,11 @@ function Interface:Init() : DockWidgetPluginGui
     })
 
     local CopyOptions = Scope:Computed(function(Use)
-        return GetPropertiesForSelection(Use(States.CurrentlySelected), COPY_PROPERTIES_BY_CLASS)
+        return PropertyMaps.GetPropertiesForSelection(Use(States.CurrentlySelected), PropertyMaps.COPY_PROPERTIES_BY_CLASS)
     end)
 
     local CurveOptions = Scope:Computed(function(Use)
-        return GetPropertiesForSelection(Use(States.CurrentlySelected), CURVE_PROPERTIES_BY_CLASS)
+        return PropertyMaps.GetPropertiesForSelection(Use(States.CurrentlySelected), PropertyMaps.CURVE_PROPERTIES_BY_CLASS)
     end)
 
     Scope:AddObject(Seam.OnChanged(States.CurrentlySelected, function()
@@ -1274,17 +931,6 @@ function Interface:Init() : DockWidgetPluginGui
         PlaceholderText = "Select property",
         Value = CopyPropertyText,
         Options = CopyOptions,
-        Active = States.IsEmittable,
-    })
-
-    local CopyAmountSlider = Scope:New(SliderInput, {
-        LayoutOrder = 3,
-        Size = UDim2.new(1, 0, 0, 58),
-        Title = "Amount",
-        Min = 0.5,
-        Max = 2,
-        Value = CopyAmountValue,
-        AllowOutOfRangeText = true,
         Active = States.IsEmittable,
     })
 
@@ -1325,7 +971,6 @@ function Interface:Init() : DockWidgetPluginGui
             local SelectedInstances = States.CurrentlySelected.Value
             local SelectedProperty = CopyPropertyText.Value
             local Value = CopiedValue.Value
-            local Amount = CopyAmountValue.Value
 
             if Value == nil then
                 return
@@ -1333,46 +978,37 @@ function Interface:Init() : DockWidgetPluginGui
 
             for _, Instance in SelectedInstances do
                 pcall(function()
-                    local NewValue = ScaleValueByMultiplier(Value, Amount)
-                    Instance[SelectedProperty] = NewValue
+                    Instance[SelectedProperty] = Value
                 end)
             end
         end,
     })
 
-    local ResizeMultiplierRow = CreateRow(Scope, 2)
-    CreateLabel(Scope, ResizeMultiplierRow, "Multiplier")
-    CreateBoundTextBox(
-        Scope,
-        ResizeMultiplierRow,
-        ResizeMultiplierText,
-        States.IsEmittable,
-        "1",
-        UDim2.fromScale(0.35, 0),
-        UDim2.fromScale(0.65, 1)
-    )
+    local ResizeMultiplierSlider = Scope:New(SliderInput, {
+        LayoutOrder = 2,
+        Size = UDim2.new(1, 0, 0, 58),
+        Title = "Multiplier",
+        Min = 0.5,
+        Max = 2,
+        Value = ResizeMultiplierValue,
+        AllowOutOfRangeText = true,
+        Active = States.IsEmittable,
+    })
 
     local ResizeApplyButton = CreateActionButton(Scope, 3, "Apply Resize", States.IsEmittable, function()
-        local Multiplier = tonumber(ResizeMultiplierText.Value)
-
-        if not Multiplier then
-            return
-        end
-
-        ApplyResizeMultiplier(Multiplier, States.CurrentlySelected.Value)
+        EffectOps.ApplyResizeMultiplier(ResizeMultiplierValue.Value, States.CurrentlySelected.Value)
     end)
 
-    local MathAmountRow = CreateRow(Scope, 2)
-    CreateLabel(Scope, MathAmountRow, "Amount")
-    CreateBoundTextBox(
-        Scope,
-        MathAmountRow,
-        MathValueText,
-        States.IsEmittable,
-        "3",
-        UDim2.fromScale(0.35, 0),
-        UDim2.fromScale(0.65, 1)
-    )
+    local MathAmountSlider = Scope:New(SliderInput, {
+        LayoutOrder = 2,
+        Size = UDim2.new(1, 0, 0, 58),
+        Title = "Amount",
+        Min = -10,
+        Max = 10,
+        Value = MathAmountValue,
+        AllowOutOfRangeText = true,
+        Active = States.IsEmittable,
+    })
 
     local MathPropertyRow = CreateRow(Scope, 3)
     CreateLabel(Scope, MathPropertyRow, "Property")
@@ -1387,14 +1023,14 @@ function Interface:Init() : DockWidgetPluginGui
     )
 
     Scope:AddObject(MathPropertyBox.FocusLost:Connect(function()
-        MathPropertyText.Value = NormalizeParticleProperty(MathPropertyText.Value)
+        MathPropertyText.Value = PropertyMaps.NormalizeParticleProperty(MathPropertyText.Value)
     end))
 
     local function RunMathOperation(Operation : string)
-        local Value = tonumber(MathValueText.Value)
-        local Property = NormalizeParticleProperty(MathPropertyText.Value)
+        local Value = MathAmountValue.Value
+        local Property = PropertyMaps.NormalizeParticleProperty(MathPropertyText.Value)
 
-        ApplyMathOperation(Value, Property, Operation, States.CurrentlySelected.Value)
+        EffectOps.ApplyMathOperation(Value, Property, Operation, States.CurrentlySelected.Value)
         MathPropertyText.Value = Property
     end
 
@@ -1451,7 +1087,7 @@ function Interface:Init() : DockWidgetPluginGui
             return
         end
 
-        local NewSequence = BuildNumberSequenceFromCurve(CurvePoints.Value, MaxRange)
+        local NewSequence = EffectOps.BuildNumberSequenceFromCurve(CurvePoints.Value, MaxRange)
 
         for _, Instance in States.CurrentlySelected.Value do
             pcall(function()
@@ -1471,7 +1107,7 @@ function Interface:Init() : DockWidgetPluginGui
         for _, Instance in States.CurrentlySelected.Value do
             pcall(function()
                 if typeof(Instance.Color) == "ColorSequence" then
-                    Instance.Color = ShiftColorSequenceToTarget(Instance.Color, RecolorValue.Value)
+                    Instance.Color = EffectOps.ShiftColorSequenceToTarget(Instance.Color, RecolorValue.Value)
                 elseif typeof(Instance.Color) == "Color3" then
                     Instance.Color = RecolorValue.Value
                 end
@@ -1591,7 +1227,6 @@ function Interface:Init() : DockWidgetPluginGui
 
         [Seam.Children] = {
             CopyPropertyDropdown,
-            CopyAmountSlider,
             CopyPasteButtons,
         },
     })
@@ -1602,7 +1237,7 @@ function Interface:Init() : DockWidgetPluginGui
         Active = true,
 
         [Seam.Children] = {
-            ResizeMultiplierRow,
+            ResizeMultiplierSlider,
             ResizeApplyButton,
         },
     })
@@ -1613,7 +1248,7 @@ function Interface:Init() : DockWidgetPluginGui
         Active = true,
 
         [Seam.Children] = {
-            MathAmountRow,
+            MathAmountSlider,
             MathPropertyRow,
             MathAddButton,
             MathSubtractButton,
@@ -1694,7 +1329,9 @@ function Interface:Init() : DockWidgetPluginGui
     end))
     Scope:AddObject(Seam.OnChanged(InjectVfxApiEnabled, function()
         if InjectVfxApiEnabled.Value then
-            EnsureSharedPlayEffectApi(Bin)
+            VfxApiInjection.Enable(Bin)
+        else
+            VfxApiInjection.Disable()
         end
     end))
 
@@ -1706,6 +1343,13 @@ function Interface:Init() : DockWidgetPluginGui
     local InitialCurveOptions = CurveOptions.Value
     if #InitialCurveOptions > 0 then
         CurvePropertyText.Value = InitialCurveOptions[1]
+    end
+
+    EmitUtils:SetPathPreviewEnabled(PreviewPathsEnabled.Value)
+    if InjectVfxApiEnabled.Value then
+        VfxApiInjection.Enable(Bin)
+    else
+        VfxApiInjection.Disable()
     end
 
     EmitUtils:SetWidget(MainWidget)

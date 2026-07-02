@@ -45,8 +45,34 @@ function SliderInput:Construct(Scope, Properties)
     local Min = Properties.Min or 0
     local Max = Properties.Max or 1
     local AllowOutOfRangeText = Properties.AllowOutOfRangeText == true
+    local TrackRightInset = 96
+
+    local function ReadActiveValue()
+        if typeof(Properties.Active) == "boolean" then
+            return Properties.Active
+        end
+
+        if typeof(Properties.Active) == "table" and Properties.Active.Value ~= nil then
+            return Properties.Active.Value == true
+        end
+
+        return Properties.Active ~= false
+    end
+
+    local function FormatNumber(Value)
+        local Rounded = math.floor(Value * 100 + 0.5) / 100
+        if math.abs(Rounded - math.floor(Rounded)) < 0.001 then
+            return tostring(math.floor(Rounded))
+        end
+
+        return string.format("%.2f", Rounded)
+    end
 
     local Frame = Scope:New("Frame", {
+        Parent = Properties.Parent,
+        LayoutOrder = Properties.LayoutOrder,
+        Position = Properties.Position,
+        AnchorPoint = Properties.AnchorPoint,
         Size = Properties.Size or UDim2.new(1, 0, 0, 58),
         BackgroundTransparency = 1,
     })
@@ -64,8 +90,8 @@ function SliderInput:Construct(Scope, Properties)
 
     local SliderTrack = Scope:New("Frame", {
         Parent = Frame,
-        Position = UDim2.fromOffset(0, 22),
-        Size = UDim2.new(1, -96, 0, 16),
+        Position = UDim2.fromOffset(0, 20),
+        Size = UDim2.new(1, -TrackRightInset, 0, 16),
         BackgroundColor3 = Color3.fromRGB(36, 36, 36),
         BorderSizePixel = 0,
 
@@ -78,6 +104,26 @@ function SliderInput:Construct(Scope, Properties)
                 Thickness = 1,
             }),
         },
+    })
+
+    Scope:New(Jian.Text, {
+        Parent = Frame,
+        Position = UDim2.fromOffset(0, 40),
+        Size = UDim2.fromOffset(56, 14),
+        Text = FormatNumber(Min),
+        TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
+    })
+
+    Scope:New(Jian.Text, {
+        Parent = Frame,
+        Position = UDim2.new(1, -TrackRightInset - 56, 0, 40),
+        Size = UDim2.fromOffset(56, 14),
+        Text = FormatNumber(Max),
+        TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Active = false,
     })
 
     Scope:New("Frame", {
@@ -122,6 +168,10 @@ function SliderInput:Construct(Scope, Properties)
         AutoButtonColor = false,
         Active = Properties.Active,
         [Seam.OnEvent("InputBegan")] = function(FirstArg, SecondArg)
+            if not ReadActiveValue() then
+                return
+            end
+
             local Input = ResolveInputObject(FirstArg, SecondArg)
             if not Input then
                 return
@@ -164,7 +214,7 @@ function SliderInput:Construct(Scope, Properties)
 
     local NumberBox = Scope:New(Jian.TextBox, {
         Parent = Frame,
-        Position = UDim2.new(1, -88, 0, 14),
+        Position = UDim2.new(1, -88, 0, 13),
         Size = UDim2.fromOffset(88, 30),
         Text = InputState,
         Active = Properties.Active,
@@ -189,6 +239,10 @@ function SliderInput:Construct(Scope, Properties)
 
         InputState.Value = tostring(NumberValue)
     end))
+
+    if Properties.Value then
+        InputState.Value = FormatNumber(Properties.Value.Value)
+    end
 
     return Frame
 end

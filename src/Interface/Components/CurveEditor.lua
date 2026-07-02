@@ -17,6 +17,30 @@ local function SortPoints(Points)
     end)
 end
 
+local function ResolveInputObject(FirstArg, SecondArg)
+    if typeof(FirstArg) == "InputObject" then
+        return FirstArg
+    end
+
+    if typeof(SecondArg) == "InputObject" then
+        return SecondArg
+    end
+
+    return nil
+end
+
+local function ReadActiveValue(ActiveProperty)
+    if typeof(ActiveProperty) == "boolean" then
+        return ActiveProperty
+    end
+
+    if typeof(ActiveProperty) == "table" and ActiveProperty.Value ~= nil then
+        return ActiveProperty.Value == true
+    end
+
+    return ActiveProperty ~= false
+end
+
 function CurveEditor:Init(Scope, Properties)
     self.ActivePointIndex = Scope:Value(nil)
     self.IsDragging = Scope:Value(false)
@@ -41,10 +65,15 @@ end
 
 function CurveEditor:Construct(Scope, Properties)
     local Frame = Scope:New("Frame", {
+        Parent = Properties.Parent,
+        LayoutOrder = Properties.LayoutOrder,
+        Position = Properties.Position,
+        AnchorPoint = Properties.AnchorPoint,
         Size = Properties.Size or UDim2.new(1, 0, 0, 180),
         BackgroundColor3 = Color3.fromRGB(24, 24, 24),
         BorderSizePixel = 0,
         ClipsDescendants = true,
+        Active = true,
 
         [Seam.Children] = {
             Scope:New("UICorner", {
@@ -57,19 +86,25 @@ function CurveEditor:Construct(Scope, Properties)
         },
     })
 
-    local PathFolder = Scope:New("Folder", {
+    local PathFolder = Scope:New("Frame", {
         Parent = Frame,
         Name = "CurvePaths",
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
     })
 
-    local DotFolder = Scope:New("Folder", {
+    local DotFolder = Scope:New("Frame", {
         Parent = Frame,
         Name = "CurvePoints",
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
     })
 
-    local HandleFolder = Scope:New("Folder", {
+    local HandleFolder = Scope:New("Frame", {
         Parent = Frame,
         Name = "CurveHandles",
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
     })
 
     local function GetPixelPoint(Point)
@@ -107,6 +142,36 @@ function CurveEditor:Construct(Scope, Properties)
         local Points = table.clone(Properties.Points.Value)
         SortPoints(Points)
 
+        local function DrawSampledLine(FromPoint : Vector2, ToPoint : Vector2)
+            local Delta = ToPoint - FromPoint
+            local Distance = Delta.Magnitude
+
+            if Distance <= 0 then
+                return
+            end
+
+            local Steps = math.max(2, math.floor(Distance / 4))
+
+            for Step = 0, Steps do
+                local Alpha = Step / Steps
+                local Position = FromPoint + Delta * Alpha
+
+                Scope:New("Frame", {
+                    Parent = PathFolder,
+                    Size = UDim2.fromOffset(3, 3),
+                    Position = UDim2.fromOffset(Position.X - 1, Position.Y - 1),
+                    BackgroundColor3 = Color3.fromRGB(110, 180, 255),
+                    BorderSizePixel = 0,
+
+                    [Seam.Children] = {
+                        Scope:New("UICorner", {
+                            CornerRadius = UDim.new(1, 0),
+                        }),
+                    },
+                })
+            end
+        end
+
         for Index, Point in ipairs(Points) do
             local Pixel = GetPixelPoint(Point)
 
@@ -131,7 +196,12 @@ function CurveEditor:Construct(Scope, Properties)
                 Text = "",
                 AutoButtonColor = false,
                 Active = Properties.Active,
-                [Seam.OnEvent("InputBegan")] = function(_, Input)
+                [Seam.OnEvent("InputBegan")] = function(FirstArg, SecondArg)
+                    local Input = ResolveInputObject(FirstArg, SecondArg)
+                    if not Input then
+                        return
+                    end
+
                     if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
                         return
                     end
@@ -158,25 +228,19 @@ function CurveEditor:Construct(Scope, Properties)
                 },
             })
 
+            DrawSampledLine(Pixel, Vector2.new(HandleX, HandleY))
+
             if Points[Index + 1] then
                 local NextPoint = Points[Index + 1]
                 local LeftPixel = Pixel
                 local RightPixel = GetPixelPoint(NextPoint)
 
-                local Segment = Scope:New("Frame", {
-                    Parent = PathFolder,
-                    AnchorPoint = Vector2.new(0, 0.5),
-                    Position = UDim2.fromOffset(LeftPixel.X, LeftPixel.Y),
-                    Size = UDim2.fromOffset((RightPixel - LeftPixel).Magnitude, 2),
-                    Rotation = math.deg(math.atan2((RightPixel - LeftPixel).Y, (RightPixel - LeftPixel).X)),
-                    BackgroundColor3 = Color3.fromRGB(110, 180, 255),
-                    BorderSizePixel = 0,
-                })
+                DrawSampledLine(LeftPixel, RightPixel)
 
                 local PathObjectSuccess, PathObject = pcall(function()
                     local NewPath = Instance.new("Path2D")
                     NewPath.Name = "CurvePath"
-                    NewPath.Parent = Segment
+                    NewPath.Parent = PathFolder
                     return NewPath
                 end)
 
@@ -188,7 +252,7 @@ function CurveEditor:Construct(Scope, Properties)
     end
 
     local function AddPointFromInput(Input)
-        local Relative = Input.Position - Frame.AbsolutePosition
+        local Relative = Vector2.new(Input.Position.X, Input.Position.Y) - Frame.AbsolutePosition
         local Width = math.max(1, Frame.AbsoluteSize.X - 12)
         local Height = math.max(1, Frame.AbsoluteSize.Y - 12)
 
@@ -208,18 +272,27 @@ function CurveEditor:Construct(Scope, Properties)
         RenderVisuals()
     end
 
-    Scope:New("TextButton", {
-        Parent = Frame,
-        Size = UDim2.fromScale(1, 1),
-        BackgroundTransparency = 1,
-        Text = "",
-        AutoButtonColor = false,
-        Active = Properties.Active,
-        ZIndex = 1,
-        [Seam.OnEvent("MouseButton2Down")] = function(_, Input)
-            AddPointFromInput(Input)
-        end,
-    })
+    Scope:AddObject(Frame.InputBegan:Connect(function(Input)
+        if not ReadActiveValue(Properties.Active) then
+            return
+        end
+
+        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return
+        end
+
+        local Position = Vector2.new(Input.Position.X, Input.Position.Y) - Frame.AbsolutePosition
+        local CurrentPoints = Properties.Points.Value
+
+        for _, Point in CurrentPoints do
+            local Pixel = GetPixelPoint(Point)
+            if (Pixel - Position).Magnitude <= 10 then
+                return
+            end
+        end
+
+        AddPointFromInput(Input)
+    end))
 
     Scope:AddObject(UserInputService.InputChanged:Connect(function(Input)
         if not self.IsDragging.Value or self.ActivePointIndex.Value == nil then
@@ -230,7 +303,7 @@ function CurveEditor:Construct(Scope, Properties)
             return
         end
 
-        local Relative = Input.Position - Frame.AbsolutePosition
+        local Relative = Vector2.new(Input.Position.X, Input.Position.Y) - Frame.AbsolutePosition
         local Width = math.max(1, Frame.AbsoluteSize.X - 12)
         local Height = math.max(1, Frame.AbsoluteSize.Y - 12)
         local Index = self.ActivePointIndex.Value

@@ -21,9 +21,49 @@ function Dropdown:Construct(Scope, Properties)
     local Options = Properties.Options or {}
     local OptionsState = if typeof(Options) == "table" then Scope:Value(Options) else Options
 
-    local OptionsListHost = Scope:New("Folder", {
-        Name = "OptionsListHost",
-    })
+    local OptionsFrame
+
+    local function ClearOptionButtons()
+        if not OptionsFrame then
+            return
+        end
+
+        for _, Child in OptionsFrame:GetChildren() do
+            if Child:IsA("GuiObject") and Child.Name == "DropdownOption" then
+                Child:Destroy()
+            end
+        end
+    end
+
+    local function RenderOptions()
+        if not OptionsFrame then
+            return
+        end
+
+        ClearOptionButtons()
+
+        local CurrentOptions = OptionsState.Value or {}
+
+        for Index, Option in ipairs(CurrentOptions) do
+            local OptionText = tostring(Option)
+
+            Scope:New(Jian.TextButton, {
+                Parent = OptionsFrame,
+                Name = "DropdownOption",
+                LayoutOrder = Index,
+                Size = UDim2.new(1, 0, 0, 26),
+                Text = OptionText,
+                Active = Properties.Active,
+                [Seam.OnEvent("Activated")] = function()
+                    if Properties.Value then
+                        Properties.Value.Value = OptionText
+                    end
+
+                    self.IsOpen.Value = false
+                end,
+            })
+        end
+    end
 
     local Frame = Scope:New("Frame", {
         Size = Properties.Size or UDim2.new(1, 0, 0, 70),
@@ -45,67 +85,46 @@ function Dropdown:Construct(Scope, Properties)
                     self.IsOpen.Value = not self.IsOpen.Value
                 end,
             }),
+        },
+    })
 
-            Scope:New("Frame", {
-                Position = UDim2.fromOffset(0, 36),
-                Size = Scope:Computed(function(Use)
-                    if not Use(self.IsOpen) then
-                        return UDim2.fromScale(1, 0)
-                    end
+    OptionsFrame = Scope:New("Frame", {
+        Parent = Frame,
+        Position = UDim2.fromOffset(0, 36),
+        Size = UDim2.fromScale(1, 0),
+        AutomaticSize = Enum.AutomaticSize.None,
+        BackgroundColor3 = Color3.fromRGB(27, 27, 27),
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        Visible = self.IsOpen,
 
-                    local CurrentOptions = Use(OptionsState)
-                    return UDim2.new(1, 0, 0, math.max(1, #CurrentOptions) * 26)
-                end),
-                AutomaticSize = Enum.AutomaticSize.None,
-                BackgroundColor3 = Color3.fromRGB(27, 27, 27),
-                BorderSizePixel = 0,
-                ClipsDescendants = true,
-                Visible = self.IsOpen,
-
-                [Seam.Children] = {
-                    Scope:New("UICorner", {
-                        CornerRadius = UDim.new(0, 6),
-                    }),
-                    Scope:New("UIStroke", {
-                        Color = Color3.fromRGB(56, 56, 56),
-                        Thickness = 1,
-                    }),
-                    Scope:New("UIListLayout", {
-                        FillDirection = Enum.FillDirection.Vertical,
-                        SortOrder = Enum.SortOrder.LayoutOrder,
-                    }),
-                    OptionsListHost,
-                },
+        [Seam.Children] = {
+            Scope:New("UICorner", {
+                CornerRadius = UDim.new(0, 6),
+            }),
+            Scope:New("UIStroke", {
+                Color = Color3.fromRGB(56, 56, 56),
+                Thickness = 1,
+            }),
+            Scope:New("UIListLayout", {
+                FillDirection = Enum.FillDirection.Vertical,
+                SortOrder = Enum.SortOrder.LayoutOrder,
             }),
         },
     })
 
-    Scope:New(OptionsListHost, {
-        [Seam.Children] = Scope:Computed(function(Use)
-            local Children = {}
-            local CurrentOptions = Use(OptionsState)
+    Scope:AddObject(Seam.OnChanged(OptionsState, function()
+        local CurrentOptions = OptionsState.Value or {}
+        OptionsFrame.Size = if self.IsOpen.Value then UDim2.new(1, 0, 0, math.max(1, #CurrentOptions) * 26) else UDim2.fromScale(1, 0)
+        RenderOptions()
+    end))
 
-            for Index, Option in ipairs(CurrentOptions) do
-                local OptionText = tostring(Option)
+    Scope:AddObject(Seam.OnChanged(self.IsOpen, function()
+        local CurrentOptions = OptionsState.Value or {}
+        OptionsFrame.Size = if self.IsOpen.Value then UDim2.new(1, 0, 0, math.max(1, #CurrentOptions) * 26) else UDim2.fromScale(1, 0)
+    end))
 
-                table.insert(Children, Scope:New(Jian.TextButton, {
-                    LayoutOrder = Index,
-                    Size = UDim2.new(1, 0, 0, 26),
-                    Text = OptionText,
-                    Active = Properties.Active,
-                    [Seam.OnEvent("Activated")] = function()
-                        if Properties.Value then
-                            Properties.Value.Value = OptionText
-                        end
-
-                        self.IsOpen.Value = false
-                    end,
-                }))
-            end
-
-            return Children
-        end),
-    })
+    RenderOptions()
 
     return Frame
 end
