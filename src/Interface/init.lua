@@ -901,15 +901,17 @@ function Interface:Init() : DockWidgetPluginGui
         Value = States.RepeatEmit,
     })
 
-    local CopyOptions = Scope:Computed(function(Use)
-        return PropertyMaps.GetPropertiesForSelection(Use(States.CurrentlySelected), PropertyMaps.COPY_PROPERTIES_BY_CLASS)
-    end)
+    local CopyOptions = Scope:Value({})
+    local CurveOptions = Scope:Value({})
 
-    local CurveOptions = Scope:Computed(function(Use)
-        return PropertyMaps.GetPropertiesForSelection(Use(States.CurrentlySelected), PropertyMaps.CURVE_PROPERTIES_BY_CLASS)
-    end)
+    local function RefreshDynamicOptions()
+        CopyOptions.Value = PropertyMaps.GetPropertiesForSelection(States.CurrentlySelected.Value, PropertyMaps.COPY_PROPERTIES_BY_CLASS)
+        CurveOptions.Value = PropertyMaps.GetPropertiesForSelection(States.CurrentlySelected.Value, PropertyMaps.CURVE_PROPERTIES_BY_CLASS)
+    end
 
     Scope:AddObject(Seam.OnChanged(States.CurrentlySelected, function()
+        RefreshDynamicOptions()
+
         local NewCopyOptions = CopyOptions.Value
         if #NewCopyOptions > 0 and not table.find(NewCopyOptions, CopyPropertyText.Value) then
             CopyPropertyText.Value = NewCopyOptions[1]
@@ -924,6 +926,8 @@ function Interface:Init() : DockWidgetPluginGui
             CurvePropertyText.Value = ""
         end
     end))
+
+    RefreshDynamicOptions()
 
     local CopyPropertyDropdown = Scope:New(Dropdown, {
         LayoutOrder = 2,

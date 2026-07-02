@@ -7,6 +7,8 @@ local Bin = Interface.Parent
 local Packages = Bin:FindFirstChild("Packages")
 local Seam = require(Packages:FindFirstChild("Seam"))
 
+local PADDING = 8
+
 local function Clamp01(Value)
     return math.clamp(Value, 0, 1)
 end
@@ -41,8 +43,29 @@ local function ReadActiveValue(ActiveProperty)
     return ActiveProperty ~= false
 end
 
+local function NormalizePoint(Point)
+    Point.InHandleX = if typeof(Point.InHandleX) == "number" then Point.InHandleX else (typeof(Point.InHandle) == "number" and Point.InHandle or -0.2)
+    Point.InHandleY = if typeof(Point.InHandleY) == "number" then Point.InHandleY else 0
+    Point.OutHandleX = if typeof(Point.OutHandleX) == "number" then Point.OutHandleX else (typeof(Point.OutHandle) == "number" and Point.OutHandle or 0.2)
+    Point.OutHandleY = if typeof(Point.OutHandleY) == "number" then Point.OutHandleY else 0
+
+    Point.Time = Clamp01(Point.Time)
+    Point.Value = Clamp01(Point.Value)
+end
+
+local function CubicBezier(P0, P1, P2, P3, T)
+    local U = 1 - T
+    local TT = T * T
+    local UU = U * U
+    local UUU = UU * U
+    local TTT = TT * T
+
+    return (P0 * UUU) + (P1 * 3 * UU * T) + (P2 * 3 * U * TT) + (P3 * TTT)
+end
+
 function CurveEditor:Init(Scope, Properties)
     self.ActivePointIndex = Scope:Value(nil)
+    self.ActiveHandle = Scope:Value(nil)
     self.IsDragging = Scope:Value(false)
 
     if not Properties.Points then
@@ -50,16 +73,24 @@ function CurveEditor:Init(Scope, Properties)
             {
                 Time = 0,
                 Value = 0,
-                InHandle = 0,
-                OutHandle = 0.2,
+                InHandleX = 0,
+                InHandleY = 0,
+                OutHandleX = 0.2,
+                OutHandleY = 0,
             },
             {
                 Time = 1,
                 Value = 1,
-                InHandle = -0.2,
-                OutHandle = 0,
+                InHandleX = -0.2,
+                InHandleY = 0,
+                OutHandleX = 0,
+                OutHandleY = 0,
             },
         })
+    end
+
+    for _, Point in Properties.Points.Value do
+        NormalizePoint(Point)
     end
 end
 
@@ -69,8 +100,8 @@ function CurveEditor:Construct(Scope, Properties)
         LayoutOrder = Properties.LayoutOrder,
         Position = Properties.Position,
         AnchorPoint = Properties.AnchorPoint,
-        Size = Properties.Size or UDim2.new(1, 0, 0, 180),
-        BackgroundColor3 = Color3.fromRGB(24, 24, 24),
+        Size = Properties.Size or UDim2.new(1, 0, 0, 200),
+        BackgroundColor3 = Color3.fromRGB(18, 19, 24),
         BorderSizePixel = 0,
         ClipsDescendants = true,
         Active = true,
@@ -86,190 +117,298 @@ function CurveEditor:Construct(Scope, Properties)
         },
     })
 
-    local PathFolder = Scope:New("Frame", {
+    local GridLayer = Scope:New("Frame", {
         Parent = Frame,
-        Name = "CurvePaths",
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
     })
 
-    local DotFolder = Scope:New("Frame", {
+    local PathLayer = Scope:New("Frame", {
         Parent = Frame,
-        Name = "CurvePoints",
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
     })
 
-    local HandleFolder = Scope:New("Frame", {
+    local HandleLayer = Scope:New("Frame", {
         Parent = Frame,
-        Name = "CurveHandles",
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
     })
 
-    local function GetPixelPoint(Point)
-        local Width = math.max(1, Frame.AbsoluteSize.X - 12)
-        local Height = math.max(1, Frame.AbsoluteSize.Y - 12)
+    local PointLayer = Scope:New("Frame", {
+        Parent = Frame,
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
+    })
 
-        local X = 6 + Clamp01(Point.Time) * Width
-        local Y = 6 + (1 - Clamp01(Point.Value)) * Height
+    Scope:New("TextLabel", {
+        Parent = GridLayer,
+        Position = UDim2.fromOffset(4, 2),
+        Size = UDim2.fromOffset(26, 14),
+        BackgroundTransparency = 1,
+        FontFace = Font.fromName("SourceSans"),
+        TextSize = 11,
+        TextColor3 = Color3.fromRGB(190, 190, 190),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Text = "1.0",
+    })
 
+    Scope:New("TextLabel", {
+        Parent = GridLayer,
+        Position = UDim2.new(0, 4, 1, -16),
+        Size = UDim2.fromOffset(26, 14),
+        BackgroundTransparency = 1,
+        FontFace = Font.fromName("SourceSans"),
+        TextSize = 11,
+        TextColor3 = Color3.fromRGB(190, 190, 190),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Text = "0.0",
+    })
+
+    Scope:New("TextLabel", {
+        Parent = GridLayer,
+        Position = UDim2.new(1, -30, 1, -16),
+        Size = UDim2.fromOffset(26, 14),
+        BackgroundTransparency = 1,
+        FontFace = Font.fromName("SourceSans"),
+        TextSize = 11,
+        TextColor3 = Color3.fromRGB(190, 190, 190),
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Text = "1.0",
+    })
+
+    for Index = 1, 4 do
+        local Alpha = Index / 5
+
+        Scope:New("Frame", {
+            Parent = GridLayer,
+            Position = UDim2.fromScale(Alpha, 0),
+            Size = UDim2.new(0, 1, 1, 0),
+            BackgroundColor3 = Color3.fromRGB(40, 40, 46),
+            BorderSizePixel = 0,
+        })
+
+        Scope:New("Frame", {
+            Parent = GridLayer,
+            Position = UDim2.fromScale(0, Alpha),
+            Size = UDim2.new(1, 0, 0, 1),
+            BackgroundColor3 = Color3.fromRGB(40, 40, 46),
+            BorderSizePixel = 0,
+        })
+    end
+
+    local function GetGraphSize()
+        local Width = math.max(1, Frame.AbsoluteSize.X - PADDING * 2)
+        local Height = math.max(1, Frame.AbsoluteSize.Y - PADDING * 2)
+        return Width, Height
+    end
+
+    local function ToPixel(Time, Value)
+        local Width, Height = GetGraphSize()
+        local X = PADDING + Clamp01(Time) * Width
+        local Y = PADDING + (1 - Clamp01(Value)) * Height
         return Vector2.new(X, Y)
     end
 
-    local function SerializePath(Path2DInstance, Left, Right)
-        local Success = pcall(function()
-            Path2DInstance:SetAttribute("P0", tostring(Left.Time) .. "," .. tostring(Left.Value))
-            Path2DInstance:SetAttribute("P1", tostring(Right.Time) .. "," .. tostring(Right.Value))
-        end)
+    local function ToCurvePosition(ScreenVector)
+        local Relative = ScreenVector - Frame.AbsolutePosition
+        local Width, Height = GetGraphSize()
+        local Time = Clamp01((Relative.X - PADDING) / Width)
+        local Value = Clamp01(1 - ((Relative.Y - PADDING) / Height))
+        return Time, Value
+    end
 
-        return Success
+    local function DrawDot(Parent, Position, Size, Color)
+        Scope:New("Frame", {
+            Parent = Parent,
+            Size = UDim2.fromOffset(Size, Size),
+            Position = UDim2.fromOffset(Position.X - (Size * 0.5), Position.Y - (Size * 0.5)),
+            BackgroundColor3 = Color,
+            BorderSizePixel = 0,
+
+            [Seam.Children] = {
+                Scope:New("UICorner", {
+                    CornerRadius = UDim.new(1, 0),
+                }),
+            },
+        })
+    end
+
+    local function DrawLine(FromPosition, ToPosition, Color)
+        local Delta = ToPosition - FromPosition
+        local Distance = Delta.Magnitude
+        if Distance <= 0 then
+            return
+        end
+
+        local Steps = math.max(2, math.floor(Distance / 3))
+        for Step = 0, Steps do
+            local Alpha = Step / Steps
+            local Position = FromPosition + Delta * Alpha
+            DrawDot(PathLayer, Position, 3, Color)
+        end
+    end
+
+    local function ClearRenderLayers()
+        for _, Child in PathLayer:GetChildren() do
+            Child:Destroy()
+        end
+
+        for _, Child in HandleLayer:GetChildren() do
+            Child:Destroy()
+        end
+
+        for _, Child in PointLayer:GetChildren() do
+            Child:Destroy()
+        end
+    end
+
+    local function GetPointsCopy()
+        local NewPoints = table.clone(Properties.Points.Value)
+        for _, Point in NewPoints do
+            NormalizePoint(Point)
+        end
+        SortPoints(NewPoints)
+        return NewPoints
     end
 
     local function RenderVisuals()
-        for _, Child in DotFolder:GetChildren() do
-            Child:Destroy()
-        end
+        ClearRenderLayers()
 
-        for _, Child in HandleFolder:GetChildren() do
-            Child:Destroy()
-        end
-
-        for _, Child in PathFolder:GetChildren() do
-            Child:Destroy()
-        end
-
-        local Points = table.clone(Properties.Points.Value)
-        SortPoints(Points)
-
-        local function DrawSampledLine(FromPoint : Vector2, ToPoint : Vector2)
-            local Delta = ToPoint - FromPoint
-            local Distance = Delta.Magnitude
-
-            if Distance <= 0 then
-                return
-            end
-
-            local Steps = math.max(2, math.floor(Distance / 4))
-
-            for Step = 0, Steps do
-                local Alpha = Step / Steps
-                local Position = FromPoint + Delta * Alpha
-
-                Scope:New("Frame", {
-                    Parent = PathFolder,
-                    Size = UDim2.fromOffset(3, 3),
-                    Position = UDim2.fromOffset(Position.X - 1, Position.Y - 1),
-                    BackgroundColor3 = Color3.fromRGB(110, 180, 255),
-                    BorderSizePixel = 0,
-
-                    [Seam.Children] = {
-                        Scope:New("UICorner", {
-                            CornerRadius = UDim.new(1, 0),
-                        }),
-                    },
-                })
-            end
-        end
+        local Points = GetPointsCopy()
 
         for Index, Point in ipairs(Points) do
-            local Pixel = GetPixelPoint(Point)
+            local PointPixel = ToPixel(Point.Time, Point.Value)
 
-            local Dot = Scope:New("Frame", {
-                Parent = DotFolder,
-                Size = UDim2.fromOffset(10, 10),
-                Position = UDim2.fromOffset(Pixel.X - 5, Pixel.Y - 5),
-                BackgroundColor3 = Color3.fromRGB(245, 245, 245),
-                BorderSizePixel = 0,
+            if Index < #Points then
+                local NextPoint = Points[Index + 1]
 
-                [Seam.Children] = {
-                    Scope:New("UICorner", {
-                        CornerRadius = UDim.new(1, 0),
-                    }),
-                },
-            })
+                local P0 = PointPixel
+                local P1 = ToPixel(Point.Time + Point.OutHandleX, Point.Value + Point.OutHandleY)
+                local P2 = ToPixel(NextPoint.Time + NextPoint.InHandleX, NextPoint.Value + NextPoint.InHandleY)
+                local P3 = ToPixel(NextPoint.Time, NextPoint.Value)
 
-            Scope:New("TextButton", {
-                Parent = Dot,
-                Size = UDim2.fromScale(1, 1),
+                local Last = P0
+                local Steps = 40
+                for Step = 1, Steps do
+                    local T = Step / Steps
+                    local Current = CubicBezier(P0, P1, P2, P3, T)
+                    DrawLine(Last, Current, Color3.fromRGB(108, 175, 255))
+                    Last = Current
+                end
+
+                pcall(function()
+                    local PathObject = Instance.new("Path2D")
+                    PathObject.Name = "CurvePath"
+                    PathObject:SetAttribute("P0", string.format("%f,%f", Point.Time, Point.Value))
+                    PathObject:SetAttribute("P1", string.format("%f,%f", NextPoint.Time, NextPoint.Value))
+                    PathObject.Parent = PathLayer
+                end)
+            end
+
+            if Index > 1 then
+                local InPixel = ToPixel(Point.Time + Point.InHandleX, Point.Value + Point.InHandleY)
+                DrawLine(PointPixel, InPixel, Color3.fromRGB(95, 120, 170))
+                DrawDot(HandleLayer, InPixel, 7, Color3.fromRGB(130, 180, 255))
+
+                local InHit = Scope:New("TextButton", {
+                    Parent = HandleLayer,
+                    Size = UDim2.fromOffset(14, 14),
+                    Position = UDim2.fromOffset(InPixel.X - 7, InPixel.Y - 7),
+                    BackgroundTransparency = 1,
+                    Text = "",
+                    AutoButtonColor = false,
+                    Active = Properties.Active,
+                    [Seam.OnEvent("InputBegan")] = function(FirstArg, SecondArg)
+                        local Input = ResolveInputObject(FirstArg, SecondArg)
+                        if not Input or Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                            return
+                        end
+
+                        self.ActiveHandle.Value = {Index = Index, Kind = "In"}
+                        self.IsDragging.Value = true
+                    end,
+                })
+                InHit.ZIndex = 4
+            end
+
+            if Index < #Points then
+                local OutPixel = ToPixel(Point.Time + Point.OutHandleX, Point.Value + Point.OutHandleY)
+                DrawLine(PointPixel, OutPixel, Color3.fromRGB(95, 120, 170))
+                DrawDot(HandleLayer, OutPixel, 7, Color3.fromRGB(130, 180, 255))
+
+                local OutHit = Scope:New("TextButton", {
+                    Parent = HandleLayer,
+                    Size = UDim2.fromOffset(14, 14),
+                    Position = UDim2.fromOffset(OutPixel.X - 7, OutPixel.Y - 7),
+                    BackgroundTransparency = 1,
+                    Text = "",
+                    AutoButtonColor = false,
+                    Active = Properties.Active,
+                    [Seam.OnEvent("InputBegan")] = function(FirstArg, SecondArg)
+                        local Input = ResolveInputObject(FirstArg, SecondArg)
+                        if not Input or Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                            return
+                        end
+
+                        self.ActiveHandle.Value = {Index = Index, Kind = "Out"}
+                        self.IsDragging.Value = true
+                    end,
+                })
+                OutHit.ZIndex = 4
+            end
+
+            DrawDot(PointLayer, PointPixel, 10, Color3.fromRGB(245, 245, 245))
+
+            local PointHit = Scope:New("TextButton", {
+                Parent = PointLayer,
+                Size = UDim2.fromOffset(16, 16),
+                Position = UDim2.fromOffset(PointPixel.X - 8, PointPixel.Y - 8),
                 BackgroundTransparency = 1,
                 Text = "",
                 AutoButtonColor = false,
                 Active = Properties.Active,
                 [Seam.OnEvent("InputBegan")] = function(FirstArg, SecondArg)
                     local Input = ResolveInputObject(FirstArg, SecondArg)
-                    if not Input then
-                        return
-                    end
-
-                    if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                    if not Input or Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
                         return
                     end
 
                     self.ActivePointIndex.Value = Index
+                    self.ActiveHandle.Value = nil
                     self.IsDragging.Value = true
                 end,
             })
-
-            local HandleX = 6 + Clamp01(Point.Time + (Point.OutHandle or 0)) * math.max(1, Frame.AbsoluteSize.X - 12)
-            local HandleY = Pixel.Y
-
-            Scope:New("Frame", {
-                Parent = HandleFolder,
-                Size = UDim2.fromOffset(6, 6),
-                Position = UDim2.fromOffset(HandleX - 3, HandleY - 3),
-                BackgroundColor3 = Color3.fromRGB(120, 180, 255),
-                BorderSizePixel = 0,
-
-                [Seam.Children] = {
-                    Scope:New("UICorner", {
-                        CornerRadius = UDim.new(1, 0),
-                    }),
-                },
-            })
-
-            DrawSampledLine(Pixel, Vector2.new(HandleX, HandleY))
-
-            if Points[Index + 1] then
-                local NextPoint = Points[Index + 1]
-                local LeftPixel = Pixel
-                local RightPixel = GetPixelPoint(NextPoint)
-
-                DrawSampledLine(LeftPixel, RightPixel)
-
-                local PathObjectSuccess, PathObject = pcall(function()
-                    local NewPath = Instance.new("Path2D")
-                    NewPath.Name = "CurvePath"
-                    NewPath.Parent = PathFolder
-                    return NewPath
-                end)
-
-                if PathObjectSuccess and PathObject then
-                    SerializePath(PathObject, Point, NextPoint)
-                end
-            end
+            PointHit.ZIndex = 5
         end
     end
 
-    local function AddPointFromInput(Input)
-        local Relative = Vector2.new(Input.Position.X, Input.Position.Y) - Frame.AbsolutePosition
-        local Width = math.max(1, Frame.AbsoluteSize.X - 12)
-        local Height = math.max(1, Frame.AbsoluteSize.Y - 12)
+    local function IsNearExistingControl(Mouse)
+        local MousePosition = Vector2.new(Mouse.Position.X, Mouse.Position.Y) - Frame.AbsolutePosition
+        local Points = GetPointsCopy()
 
-        local Time = Clamp01((Relative.X - 6) / Width)
-        local Value = Clamp01(1 - ((Relative.Y - 6) / Height))
+        for Index, Point in ipairs(Points) do
+            local PointPixel = ToPixel(Point.Time, Point.Value)
+            if (PointPixel - MousePosition).Magnitude <= 12 then
+                return true
+            end
 
-        local NewPoints = table.clone(Properties.Points.Value)
-        table.insert(NewPoints, {
-            Time = Time,
-            Value = Value,
-            InHandle = -0.1,
-            OutHandle = 0.1,
-        })
-        SortPoints(NewPoints)
+            if Index > 1 then
+                local InPixel = ToPixel(Point.Time + Point.InHandleX, Point.Value + Point.InHandleY)
+                if (InPixel - MousePosition).Magnitude <= 12 then
+                    return true
+                end
+            end
 
-        Properties.Points.Value = NewPoints
-        RenderVisuals()
+            if Index < #Points then
+                local OutPixel = ToPixel(Point.Time + Point.OutHandleX, Point.Value + Point.OutHandleY)
+                if (OutPixel - MousePosition).Magnitude <= 12 then
+                    return true
+                end
+            end
+        end
+
+        return false
     end
 
     Scope:AddObject(Frame.InputBegan:Connect(function(Input)
@@ -281,21 +420,29 @@ function CurveEditor:Construct(Scope, Properties)
             return
         end
 
-        local Position = Vector2.new(Input.Position.X, Input.Position.Y) - Frame.AbsolutePosition
-        local CurrentPoints = Properties.Points.Value
-
-        for _, Point in CurrentPoints do
-            local Pixel = GetPixelPoint(Point)
-            if (Pixel - Position).Magnitude <= 10 then
-                return
-            end
+        if IsNearExistingControl(Input) then
+            return
         end
 
-        AddPointFromInput(Input)
+        local Time, Value = ToCurvePosition(Vector2.new(Input.Position.X, Input.Position.Y))
+
+        local NewPoints = GetPointsCopy()
+        table.insert(NewPoints, {
+            Time = Time,
+            Value = Value,
+            InHandleX = -0.12,
+            InHandleY = 0,
+            OutHandleX = 0.12,
+            OutHandleY = 0,
+        })
+        SortPoints(NewPoints)
+
+        Properties.Points.Value = NewPoints
+        RenderVisuals()
     end))
 
     Scope:AddObject(UserInputService.InputChanged:Connect(function(Input)
-        if not self.IsDragging.Value or self.ActivePointIndex.Value == nil then
+        if not self.IsDragging.Value then
             return
         end
 
@@ -303,30 +450,53 @@ function CurveEditor:Construct(Scope, Properties)
             return
         end
 
-        local Relative = Vector2.new(Input.Position.X, Input.Position.Y) - Frame.AbsolutePosition
-        local Width = math.max(1, Frame.AbsoluteSize.X - 12)
-        local Height = math.max(1, Frame.AbsoluteSize.Y - 12)
-        local Index = self.ActivePointIndex.Value
+        local NewPoints = GetPointsCopy()
 
-        local NewPoints = table.clone(Properties.Points.Value)
-        local Point = NewPoints[Index]
+        if self.ActivePointIndex.Value ~= nil then
+            local Index = self.ActivePointIndex.Value
+            local Point = NewPoints[Index]
+            if not Point then
+                return
+            end
 
-        if not Point then
+            local Time, Value = ToCurvePosition(Vector2.new(Input.Position.X, Input.Position.Y))
+            Point.Time = Time
+            Point.Value = Value
+            SortPoints(NewPoints)
+            Properties.Points.Value = NewPoints
+            RenderVisuals()
             return
         end
 
-        Point.Time = Clamp01((Relative.X - 6) / Width)
-        Point.Value = Clamp01(1 - ((Relative.Y - 6) / Height))
+        if self.ActiveHandle.Value ~= nil then
+            local HandleData = self.ActiveHandle.Value
+            local Point = NewPoints[HandleData.Index]
+            if not Point then
+                return
+            end
 
-        SortPoints(NewPoints)
-        Properties.Points.Value = NewPoints
-        RenderVisuals()
+            local Time, Value = ToCurvePosition(Vector2.new(Input.Position.X, Input.Position.Y))
+            local DeltaTime = Time - Point.Time
+            local DeltaValue = Value - Point.Value
+
+            if HandleData.Kind == "Out" then
+                Point.OutHandleX = math.max(0, DeltaTime)
+                Point.OutHandleY = DeltaValue
+            else
+                Point.InHandleX = math.min(0, DeltaTime)
+                Point.InHandleY = DeltaValue
+            end
+
+            Properties.Points.Value = NewPoints
+            RenderVisuals()
+        end
     end))
 
     Scope:AddObject(UserInputService.InputEnded:Connect(function(Input)
         if Input.UserInputType == Enum.UserInputType.MouseButton1 then
             self.IsDragging.Value = false
             self.ActivePointIndex.Value = nil
+            self.ActiveHandle.Value = nil
         end
     end))
 

@@ -21,18 +21,6 @@ local function ToNumber(Value)
     return Number
 end
 
-local function ResolveInputObject(FirstArg, SecondArg)
-    if typeof(FirstArg) == "InputObject" then
-        return FirstArg
-    end
-
-    if typeof(SecondArg) == "InputObject" then
-        return SecondArg
-    end
-
-    return nil
-end
-
 function SliderInput:Init(Scope, Properties)
     self.Dragging = Scope:Value(false)
 
@@ -167,22 +155,13 @@ function SliderInput:Construct(Scope, Properties)
         Text = "",
         AutoButtonColor = false,
         Active = Properties.Active,
-        [Seam.OnEvent("InputBegan")] = function(FirstArg, SecondArg)
+        [Seam.OnEvent("MouseButton1Down")] = function()
             if not ReadActiveValue() then
                 return
             end
 
-            local Input = ResolveInputObject(FirstArg, SecondArg)
-            if not Input then
-                return
-            end
-
-            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-                return
-            end
-
             self.Dragging.Value = true
-            UpdateFromPosition(Input.Position.X)
+            UpdateFromPosition(UserInputService:GetMouseLocation().X)
         end,
     })
 

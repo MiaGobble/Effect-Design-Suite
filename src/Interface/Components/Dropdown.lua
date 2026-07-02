@@ -18,8 +18,7 @@ function Dropdown:Init(Scope, Properties)
 end
 
 function Dropdown:Construct(Scope, Properties)
-    local Options = Properties.Options or {}
-    local OptionsState = if typeof(Options) == "table" then Scope:Value(Options) else Options
+    local OptionsSource = Properties.Options or {}
 
     local OptionsFrame
 
@@ -35,6 +34,18 @@ function Dropdown:Construct(Scope, Properties)
         end
     end
 
+    local function ReadOptions()
+        if typeof(OptionsSource) == "table" and OptionsSource.Value ~= nil and typeof(OptionsSource.Value) == "table" then
+            return OptionsSource.Value
+        end
+
+        if typeof(OptionsSource) == "table" then
+            return OptionsSource
+        end
+
+        return {}
+    end
+
     local function RenderOptions()
         if not OptionsFrame then
             return
@@ -42,7 +53,7 @@ function Dropdown:Construct(Scope, Properties)
 
         ClearOptionButtons()
 
-        local CurrentOptions = OptionsState.Value or {}
+        local CurrentOptions = ReadOptions()
 
         for Index, Option in ipairs(CurrentOptions) do
             local OptionText = tostring(Option)
@@ -66,6 +77,10 @@ function Dropdown:Construct(Scope, Properties)
     end
 
     local Frame = Scope:New("Frame", {
+        Parent = Properties.Parent,
+        LayoutOrder = Properties.LayoutOrder,
+        Position = Properties.Position,
+        AnchorPoint = Properties.AnchorPoint,
         Size = Properties.Size or UDim2.new(1, 0, 0, 70),
         BackgroundTransparency = 1,
 
@@ -113,14 +128,16 @@ function Dropdown:Construct(Scope, Properties)
         },
     })
 
-    Scope:AddObject(Seam.OnChanged(OptionsState, function()
-        local CurrentOptions = OptionsState.Value or {}
-        OptionsFrame.Size = if self.IsOpen.Value then UDim2.new(1, 0, 0, math.max(1, #CurrentOptions) * 26) else UDim2.fromScale(1, 0)
-        RenderOptions()
-    end))
+    if typeof(OptionsSource) == "table" and OptionsSource.Value ~= nil then
+        Scope:AddObject(Seam.OnChanged(OptionsSource, function()
+            local CurrentOptions = ReadOptions()
+            OptionsFrame.Size = if self.IsOpen.Value then UDim2.new(1, 0, 0, math.max(1, #CurrentOptions) * 26) else UDim2.fromScale(1, 0)
+            RenderOptions()
+        end))
+    end
 
     Scope:AddObject(Seam.OnChanged(self.IsOpen, function()
-        local CurrentOptions = OptionsState.Value or {}
+        local CurrentOptions = ReadOptions()
         OptionsFrame.Size = if self.IsOpen.Value then UDim2.new(1, 0, 0, math.max(1, #CurrentOptions) * 26) else UDim2.fromScale(1, 0)
     end))
 
