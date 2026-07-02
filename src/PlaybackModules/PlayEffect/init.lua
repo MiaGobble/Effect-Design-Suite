@@ -76,7 +76,8 @@ local function CalculateVolume(Sound: Sound, ParentInstance: Instance): number
     elseif RolloffMode == Enum.RollOffMode.Inverse then
         Volume = math.clamp(MinDistance / math.max(Distance, MinDistance), 0, 1)
     else -- Default to linear
-        Volume = 1 - ((Distance - MinDistance) / (MaxDistance - MinDistance))
+        local Alpha = (Distance - MinDistance) / (MaxDistance - MinDistance)
+        Volume = 1 - math.clamp(Alpha * Alpha, 0, 1)
     end
     
     return Volume
@@ -284,10 +285,9 @@ local function PlayEffect(This : Instance, Bin : Instance) : number?
         TotalDuration = (This:GetAttribute("EmitDuration") or 0) + (This:GetAttribute("EmitDelay") or 0) + This.Lifetime.Max
     elseif This:IsA("Sound") then
         local NewSound = This:Clone()
+        NewSound.Parent = if This.Parent then This.Parent else workspace
 
         task.delay(This:GetAttribute("EmitDelay") or 0, function()
-            --NewSound.Parent = Widget
-            
             -- Set initial volume based on distance
             if This.Parent and (This.Parent:IsA("BasePart") or This.Parent:IsA("Attachment")) then
                 local Attenuation = CalculateVolume(This, This.Parent)
@@ -318,8 +318,6 @@ local function PlayEffect(This : Instance, Bin : Instance) : number?
         else
             TotalDuration = (This.TimeLength / This.PlaybackSpeed) + (This:GetAttribute("EmitDelay") or 0)
         end
-
-        WidgetParentPayload = {NewSound, TotalDuration}
     elseif This:IsA("Trail") then
         This.Enabled = false
 

@@ -8,10 +8,149 @@ local Bin = script.Parent.Parent
 local Objects = Bin:FindFirstChild("Objects")
 local PlayEffect = require(Bin.PlaybackModules:FindFirstChild("PlayEffect"))
 local States = require(Objects:FindFirstChild("States"))
+local Packages = Bin:FindFirstChild("Packages")
+local Seam = require(Packages:FindFirstChild("Seam"))
 
 -- Variables
 local RepeatEmitConnection = nil
 local Widget = nil
+local PathPreviewFolder = nil
+local PathPreviewConnections = {}
+
+local function DisconnectPathPreviewConnections()
+    for _, Connection in PathPreviewConnections do
+        if Connection and Connection.Disconnect then
+            Connection:Disconnect()
+        end
+    end
+
+    table.clear(PathPreviewConnections)
+end
+
+local function GetPreviewFolder()
+    if PathPreviewFolder and PathPreviewFolder.Parent then
+        return PathPreviewFolder
+    end
+
+    local Folder = workspace:FindFirstChild("EffectDesignerSuitePathPreview")
+    if not Folder then
+        Folder = Instance.new("Folder")
+        Folder.Name = "EffectDesignerSuitePathPreview"
+        Folder.Parent = workspace
+    end
+
+    PathPreviewFolder = Folder
+    return Folder
+end
+
+local function ClearPathPreview()
+    if not PathPreviewFolder then
+        return
+    end
+
+    for _, Child in PathPreviewFolder:GetChildren() do
+        Child:Destroy()
+    end
+end
+
+local function DrawPathSegment(FromPosition : Vector3, ToPosition : Vector3, Parent : Instance)
+    local Segment = Instance.new("Part")
+    Segment.Name = "PathSegment"
+    Segment.Anchored = true
+    Segment.CanCollide = false
+    Segment.CanTouch = false
+    Segment.CanQuery = false
+    Segment.Material = Enum.Material.Neon
+    Segment.Color = Color3.fromRGB(70, 180, 255)
+
+    local Delta = ToPosition - FromPosition
+    local Length = Delta.Magnitude
+
+    if Length <= 0.001 then
+        Segment:Destroy()
+        return
+    end
+
+    Segment.Size = Vector3.new(0.06, 0.06, Length)
+    Segment.CFrame = CFrame.lookAt((FromPosition + ToPosition) * 0.5, ToPosition)
+    Segment.Parent = Parent
+end
+
+local function BuildIndicatorPathPreview(AnimationIndicator : StringValue, Parent : Instance)
+    if not AnimationIndicator.Parent then
+        return
+    end
+
+    local Host = AnimationIndicator.Parent
+    local Origin = Host:FindFirstChild("Origin")
+    local Target = Host:FindFirstChild("Target")
+
+    if not Origin or not Target or not Origin:IsA("Attachment") or not Target:IsA("Attachment") then
+        return
+    end
+
+    if AnimationIndicator.Value == "Tween" then
+        DrawPathSegment(Origin.WorldPosition, Target.WorldPosition, Parent)
+        return
+    end
+
+    if AnimationIndicator.Value == "Bezier" then
+        local Points = {Origin.WorldPosition}
+        local Midpoints = {}
+
+        for _, Child in Host:GetChildren() do
+            if Child:IsA("Attachment") and Child.Name:match("^Midpoint%d+$") then
+                table.insert(Midpoints, Child)
+            end
+        end
+
+        table.sort(Midpoints, function(Left, Right)
+            local LeftIndex = tonumber(Left.Name:gsub("Midpoint", "")) or 0
+            local RightIndex = tonumber(Right.Name:gsub("Midpoint", "")) or 0
+            return LeftIndex < RightIndex
+        end)
+
+        for _, Midpoint in Midpoints do
+            table.insert(Points, Midpoint.WorldPosition)
+        end
+
+        table.insert(Points, Target.WorldPosition)
+
+        for Index = 1, #Points - 1 do
+            DrawPathSegment(Points[Index], Points[Index + 1], Parent)
+        end
+    end
+end
+
+local function RefreshPathPreview()
+    local Folder = GetPreviewFolder()
+    ClearPathPreview()
+
+    local Candidates = {}
+
+    for _, Instance in States.RawSelection.Value do
+        table.insert(Candidates, Instance)
+    end
+
+    for _, Instance in States.CurrentlySelected.Value do
+        table.insert(Candidates, Instance)
+    end
+
+    local Seen = {}
+
+    for _, Candidate in Candidates do
+        if Candidate:IsA("StringValue") and Candidate.Name == "AnimationIndicator" and not Seen[Candidate] then
+            Seen[Candidate] = true
+            BuildIndicatorPathPreview(Candidate, Folder)
+        else
+            local Indicator = Candidate:FindFirstChild("AnimationIndicator")
+            if Indicator and Indicator:IsA("StringValue") and not Seen[Indicator] then
+                Seen[Indicator] = true
+                BuildIndicatorPathPreview(Indicator, Folder)
+            end
+        end
+    end
+end
 
 function EmitUtils:SetWidget(...)
     Widget = ...
@@ -145,6 +284,19 @@ function EmitUtils:CreateNewAnimationIndicator(Parent : Instance, Type : string)
     end
 
     return AnimationIndicator
+end
+
+function EmitUtils:SetPathPreviewEnabled(Enabled : boolean)
+    if not Enabled then
+        DisconnectPathPreviewConnections()
+        ClearPathPreview()
+        return
+    end
+
+    DisconnectPathPreviewConnections()
+    table.insert(PathPreviewConnections, Seam.OnChanged(States.CurrentlySelected, RefreshPathPreview))
+    table.insert(PathPreviewConnections, Seam.OnChanged(States.RawSelection, RefreshPathPreview))
+    RefreshPathPreview()
 end
 
 return EmitUtils

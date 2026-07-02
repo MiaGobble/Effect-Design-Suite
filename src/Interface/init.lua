@@ -14,6 +14,61 @@ local PARTICLE_PROPERTIES = {
     "Texture",
 }
 
+local COPY_PROPERTIES_BY_CLASS = {
+    ParticleEmitter = {
+        "Size",
+        "Color",
+        "Transparency",
+        "Speed",
+        "Acceleration",
+        "Lifetime",
+        "Rate",
+        "LightEmission",
+        "LightInfluence",
+        "Texture",
+    },
+    Beam = {
+        "Color",
+        "Transparency",
+        "Width0",
+        "Width1",
+        "Texture",
+        "TextureLength",
+        "TextureSpeed",
+        "Brightness",
+    },
+    Trail = {
+        "Color",
+        "Transparency",
+        "WidthScale",
+        "Texture",
+        "Brightness",
+    },
+    Attachment = {
+        "Position",
+        "Orientation",
+        "Axis",
+        "SecondaryAxis",
+    },
+}
+
+local CURVE_PROPERTIES_BY_CLASS = {
+    ParticleEmitter = {
+        "Size",
+        "Transparency",
+        "Squash",
+    },
+    Beam = {
+        "Transparency",
+        "WidthScale",
+    },
+    Trail = {
+        "Transparency",
+        "WidthScale",
+    },
+    Attachment = {},
+}
+
 local Selection = game:GetService("Selection")
 local RunService = game:GetService("RunService")
 
@@ -25,6 +80,11 @@ local AssetUtils = require(script.AssetUtils)
 local States = require(Objects:FindFirstChild("States"))
 local Seam = require(Packages:FindFirstChild("Seam"))
 local Jian = require(Packages:FindFirstChild("Jian"))
+local Components = script:FindFirstChild("Components")
+local Dropdown = require(Components:FindFirstChild("Dropdown"))
+local SliderInput = require(Components:FindFirstChild("SliderInput"))
+local CurveEditor = require(Components:FindFirstChild("CurveEditor"))
+local ColorPicker = require(Components:FindFirstChild("ColorPicker"))
 
 local InterfaceScope = nil
 
@@ -38,6 +98,184 @@ local function NormalizeParticleProperty(PropertyName : string)
     end
 
     return PropertyName
+end
+
+local function GetSelectionClass(Instances : {Instance})
+    if not Instances or #Instances == 0 then
+        return nil
+    end
+
+    local First = Instances[1]
+
+    if COPY_PROPERTIES_BY_CLASS[First.ClassName] then
+        return First.ClassName
+    end
+
+    return nil
+end
+
+local function GetPropertiesForSelection(Instances : {Instance}, PropertyMap)
+    local ClassName = GetSelectionClass(Instances)
+
+    if not ClassName then
+        return {}
+    end
+
+    return PropertyMap[ClassName] or {}
+end
+
+local function ScaleValueByMultiplier(Value, Multiplier : number)
+    local ValueType = typeof(Value)
+
+    if ValueType == "number" then
+        return Value * Multiplier
+    end
+
+    if ValueType == "NumberRange" then
+        return NumberRange.new(Value.Min * Multiplier, Value.Max * Multiplier)
+    end
+
+    if ValueType == "NumberSequence" then
+        local Keypoints = {}
+
+        for _, Keypoint in Value.Keypoints do
+            table.insert(Keypoints, NumberSequenceKeypoint.new(
+                Keypoint.Time,
+                Keypoint.Value * Multiplier,
+                Keypoint.Envelope * Multiplier
+            ))
+        end
+
+        return NumberSequence.new(Keypoints)
+    end
+
+    if ValueType == "Vector3" then
+        return Value * Multiplier
+    end
+
+    return Value
+end
+
+local function ShiftColorSequenceToTarget(Sequence : ColorSequence, TargetColor : Color3)
+    local Keypoints = Sequence.Keypoints
+
+    if #Keypoints == 0 then
+        return Sequence
+    end
+
+    local BaseColor = Keypoints[1].Value
+    local BaseHue, BaseSaturation, BaseValue = BaseColor:ToHSV()
+    local TargetHue, TargetSaturation, TargetValue = TargetColor:ToHSV()
+
+    local HueDelta = TargetHue - BaseHue
+    local SaturationDelta = TargetSaturation - BaseSaturation
+    local ValueDelta = TargetValue - BaseValue
+
+    local NewKeypoints = {}
+
+    for _, Keypoint in Keypoints do
+        local Hue, Saturation, Brightness = Keypoint.Value:ToHSV()
+
+        table.insert(NewKeypoints, ColorSequenceKeypoint.new(
+            Keypoint.Time,
+            Color3.fromHSV(
+                (Hue + HueDelta) % 1,
+                math.clamp(Saturation + SaturationDelta, 0, 1),
+                math.clamp(Brightness + ValueDelta, 0, 1)
+            )
+        ))
+    end
+
+    return ColorSequence.new(NewKeypoints)
+end
+
+local function ApplyResizeMultiplier(Multiplier : number, Instances : {Instance})
+    if not Multiplier then
+        return
+    end
+
+    for _, Instance in Instances do
+        if Instance:IsA("ParticleEmitter") then
+            Instance.Size = ScaleValueByMultiplier(Instance.Size, Multiplier)
+        elseif Instance:IsA("Beam") then
+            Instance.Width0 = Instance.Width0 * Multiplier
+            Instance.Width1 = Instance.Width1 * Multiplier
+        elseif Instance:IsA("Trail") then
+            Instance.WidthScale = ScaleValueByMultiplier(Instance.WidthScale, Multiplier)
+        elseif Instance:IsA("Attachment") then
+            Instance.Position = Instance.Position * Multiplier
+        end
+    end
+end
+
+local function BuildNumberSequenceFromCurve(Points : {{Time : number, Value : number}}, MaxRange : number)
+    local Sorted = table.clone(Points)
+    table.sort(Sorted, function(Left, Right)
+        return Left.Time < Right.Time
+    end)
+
+    local Keypoints = {}
+
+    for _, Point in Sorted do
+        table.insert(Keypoints, NumberSequenceKeypoint.new(
+            math.clamp(Point.Time, 0, 1),
+            math.clamp(Point.Value, 0, 1) * MaxRange
+        ))
+    end
+
+    return NumberSequence.new(Keypoints)
+end
+
+local function EnsureSharedPlayEffectApi(BinFolder : Instance)
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local StarterPlayer = game:GetService("StarterPlayer")
+    local ServerScriptService = game:GetService("ServerScriptService")
+
+    local Container = ReplicatedStorage:FindFirstChild("EffectDesignerSuite")
+    if not Container then
+        Container = Instance.new("Folder")
+        Container.Name = "EffectDesignerSuite"
+        Container.Parent = ReplicatedStorage
+    end
+
+    local PlayEffectModule = Container:FindFirstChild("PlayEffect")
+    if not PlayEffectModule then
+        PlayEffectModule = BinFolder.PlaybackModules.PlayEffect:Clone()
+        PlayEffectModule.Name = "PlayEffect"
+        PlayEffectModule.Parent = Container
+    end
+
+    local SharedClientScript = StarterPlayer.StarterPlayerScripts:FindFirstChild("EDSSharedPlayEffect.client")
+    if not SharedClientScript then
+        SharedClientScript = Instance.new("LocalScript")
+        SharedClientScript.Name = "EDSSharedPlayEffect.client"
+        SharedClientScript.Source = [[
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SharedFolder = ReplicatedStorage:WaitForChild("EffectDesignerSuite")
+local PlayEffect = require(SharedFolder:WaitForChild("PlayEffect"))
+
+shared.PlayEffect = function(Target)
+    return PlayEffect(Target)
+end
+]]
+        SharedClientScript.Parent = StarterPlayer.StarterPlayerScripts
+    end
+
+    local SharedServerScript = ServerScriptService:FindFirstChild("EDSSharedPlayEffect.server")
+    if not SharedServerScript then
+        SharedServerScript = Instance.new("Script")
+        SharedServerScript.Name = "EDSSharedPlayEffect.server"
+        SharedServerScript.Source = [[
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SharedFolder = ReplicatedStorage:WaitForChild("EffectDesignerSuite")
+local PlayEffect = require(SharedFolder:WaitForChild("PlayEffect"))
+
+shared.PlayEffect = function(Target)
+    return PlayEffect(Target)
+end
+]]
+        SharedServerScript.Parent = ServerScriptService
+    end
 end
 
 local function FormatTextureId(TextureId : number | string)
@@ -424,8 +662,29 @@ function Interface:Init() : DockWidgetPluginGui
     local EmitDurationText = Scope:Value("")
     local RepeatEmitDelayText = Scope:Value(tostring(States.RepeatEmitDelay.Value))
     local CopyPropertyText = Scope:Value("Size")
+    local CopyAmountValue = Scope:Value(1)
+    local ResizeMultiplierText = Scope:Value("1")
     local MathPropertyText = Scope:Value("Size")
     local MathValueText = Scope:Value("3")
+    local CurvePropertyText = Scope:Value("")
+    local CurveMaxRangeText = Scope:Value("10")
+    local CurvePoints = Scope:Value({
+        {
+            Time = 0,
+            Value = 0,
+            InHandle = 0,
+            OutHandle = 0.2,
+        },
+        {
+            Time = 1,
+            Value = 1,
+            InHandle = -0.2,
+            OutHandle = 0,
+        },
+    })
+    local RecolorValue = Scope:Value(Color3.fromRGB(255, 255, 255))
+    local PreviewPathsEnabled = Scope:Value(false)
+    local InjectVfxApiEnabled = Scope:Value(false)
     local CopiedValue = Scope:Value(nil)
     local SelectedAsset = Scope:Value(nil)
     local SelectedAssetCategory = Scope:Value(nil)
@@ -985,19 +1244,51 @@ function Interface:Init() : DockWidgetPluginGui
         Value = States.RepeatEmit,
     })
 
-    local CopyPropertyBox = Scope:New(Jian.TextBox, {
-        LayoutOrder = 2,
-        Text = CopyPropertyText,
-        Active = States.IsEmittable,
-        PlaceholderText = "Property name",
-        Size = UDim2.new(1, 0, 0, 35),
-    })
-    BindTextBox(Scope, CopyPropertyBox, CopyPropertyText)
-    Scope:AddObject(CopyPropertyBox.FocusLost:Connect(function()
-        CopyPropertyText.Value = NormalizeParticleProperty(CopyPropertyText.Value)
+    local CopyOptions = Scope:Computed(function(Use)
+        return GetPropertiesForSelection(Use(States.CurrentlySelected), COPY_PROPERTIES_BY_CLASS)
+    end)
+
+    local CurveOptions = Scope:Computed(function(Use)
+        return GetPropertiesForSelection(Use(States.CurrentlySelected), CURVE_PROPERTIES_BY_CLASS)
+    end)
+
+    Scope:AddObject(Seam.OnChanged(States.CurrentlySelected, function()
+        local NewCopyOptions = CopyOptions.Value
+        if #NewCopyOptions > 0 and not table.find(NewCopyOptions, CopyPropertyText.Value) then
+            CopyPropertyText.Value = NewCopyOptions[1]
+        elseif #NewCopyOptions == 0 then
+            CopyPropertyText.Value = ""
+        end
+
+        local NewCurveOptions = CurveOptions.Value
+        if #NewCurveOptions > 0 and not table.find(NewCurveOptions, CurvePropertyText.Value) then
+            CurvePropertyText.Value = NewCurveOptions[1]
+        elseif #NewCurveOptions == 0 then
+            CurvePropertyText.Value = ""
+        end
     end))
 
-    local CopyPasteButtons = CreateRow(Scope, 3)
+    local CopyPropertyDropdown = Scope:New(Dropdown, {
+        LayoutOrder = 2,
+        Size = UDim2.new(1, 0, 0, 94),
+        PlaceholderText = "Select property",
+        Value = CopyPropertyText,
+        Options = CopyOptions,
+        Active = States.IsEmittable,
+    })
+
+    local CopyAmountSlider = Scope:New(SliderInput, {
+        LayoutOrder = 3,
+        Size = UDim2.new(1, 0, 0, 58),
+        Title = "Amount",
+        Min = 0.5,
+        Max = 2,
+        Value = CopyAmountValue,
+        AllowOutOfRangeText = true,
+        Active = States.IsEmittable,
+    })
+
+    local CopyPasteButtons = CreateRow(Scope, 4)
     Scope:New(Jian.TextButton, {
         Parent = CopyPasteButtons,
         Text = "Copy",
@@ -1012,11 +1303,7 @@ function Interface:Init() : DockWidgetPluginGui
 
             local FirstInstance = SelectedInstances[1]
 
-            if not FirstInstance:IsA("ParticleEmitter") then
-                return
-            end
-
-            local SelectedProperty = NormalizeParticleProperty(CopyPropertyText.Value)
+            local SelectedProperty = CopyPropertyText.Value
             local Success, Value = pcall(function()
                 return FirstInstance[SelectedProperty]
             end)
@@ -1036,20 +1323,44 @@ function Interface:Init() : DockWidgetPluginGui
         Size = UDim2.fromScale(0.48, 1),
         [Seam.OnEvent("Activated")] = function()
             local SelectedInstances = States.CurrentlySelected.Value
-            local SelectedProperty = NormalizeParticleProperty(CopyPropertyText.Value)
+            local SelectedProperty = CopyPropertyText.Value
             local Value = CopiedValue.Value
+            local Amount = CopyAmountValue.Value
 
             if Value == nil then
                 return
             end
 
             for _, Instance in SelectedInstances do
-                if Instance:IsA("ParticleEmitter") then
-                    Instance[SelectedProperty] = Value
-                end
+                pcall(function()
+                    local NewValue = ScaleValueByMultiplier(Value, Amount)
+                    Instance[SelectedProperty] = NewValue
+                end)
             end
         end,
     })
+
+    local ResizeMultiplierRow = CreateRow(Scope, 2)
+    CreateLabel(Scope, ResizeMultiplierRow, "Multiplier")
+    CreateBoundTextBox(
+        Scope,
+        ResizeMultiplierRow,
+        ResizeMultiplierText,
+        States.IsEmittable,
+        "1",
+        UDim2.fromScale(0.35, 0),
+        UDim2.fromScale(0.65, 1)
+    )
+
+    local ResizeApplyButton = CreateActionButton(Scope, 3, "Apply Resize", States.IsEmittable, function()
+        local Multiplier = tonumber(ResizeMultiplierText.Value)
+
+        if not Multiplier then
+            return
+        end
+
+        ApplyResizeMultiplier(Multiplier, States.CurrentlySelected.Value)
+    end)
 
     local MathAmountRow = CreateRow(Scope, 2)
     CreateLabel(Scope, MathAmountRow, "Amount")
@@ -1100,6 +1411,74 @@ function Interface:Init() : DockWidgetPluginGui
         RunMathOperation("divide")
     end)
 
+    local CurvePropertyDropdown = Scope:New(Dropdown, {
+        LayoutOrder = 2,
+        Size = UDim2.new(1, 0, 0, 94),
+        PlaceholderText = "Curve property",
+        Value = CurvePropertyText,
+        Options = CurveOptions,
+        Active = States.IsEmittable,
+    })
+
+    local CurveEditorWidget = Scope:New(CurveEditor, {
+        LayoutOrder = 3,
+        Size = UDim2.new(1, 0, 0, 180),
+        Points = CurvePoints,
+        Active = States.IsEmittable,
+    })
+
+    local CurveRangeRow = CreateRow(Scope, 4)
+    CreateLabel(Scope, CurveRangeRow, "Max Range")
+    CreateBoundTextBox(
+        Scope,
+        CurveRangeRow,
+        CurveMaxRangeText,
+        States.IsEmittable,
+        "10",
+        UDim2.fromScale(0.35, 0),
+        UDim2.fromScale(0.65, 1)
+    )
+
+    local CurveApplyButton = CreateActionButton(Scope, 5, "Apply Curve", States.IsEmittable, function()
+        local SelectedProperty = CurvePropertyText.Value
+        local MaxRange = tonumber(CurveMaxRangeText.Value)
+
+        if not SelectedProperty or SelectedProperty == "" then
+            return
+        end
+
+        if not MaxRange then
+            return
+        end
+
+        local NewSequence = BuildNumberSequenceFromCurve(CurvePoints.Value, MaxRange)
+
+        for _, Instance in States.CurrentlySelected.Value do
+            pcall(function()
+                Instance[SelectedProperty] = NewSequence
+            end)
+        end
+    end)
+
+    local RecolorPicker = Scope:New(ColorPicker, {
+        LayoutOrder = 2,
+        Size = UDim2.new(1, 0, 0, 198),
+        Value = RecolorValue,
+        Active = States.IsEmittable,
+    })
+
+    local RecolorApplyButton = CreateActionButton(Scope, 3, "Apply Recolor", States.IsEmittable, function()
+        for _, Instance in States.CurrentlySelected.Value do
+            pcall(function()
+                if typeof(Instance.Color) == "ColorSequence" then
+                    Instance.Color = ShiftColorSequenceToTarget(Instance.Color, RecolorValue.Value)
+                elseif typeof(Instance.Color) == "Color3" then
+                    Instance.Color = RecolorValue.Value
+                end
+            end)
+        end
+    end)
+
     local CreateBezierAnimationButton = CreateActionButton(Scope, 2, "Create Bezier Animation", HasRawSelection, function()
         local SelectedInstances = States.RawSelection.Value
 
@@ -1146,6 +1525,26 @@ function Interface:Init() : DockWidgetPluginGui
         Selection:Set({EffectModuleTemplate})
     end)
 
+    local PreviewPathsCheckboxRow = CreateRow(Scope, 4)
+    Scope:New(Jian.Checkbox, {
+        Parent = PreviewPathsCheckboxRow,
+        Position = UDim2.fromOffset(0, 8),
+        Size = UDim2.new(1, 0, 0, 20),
+        Title = "Preview Paths",
+        Active = true,
+        Value = PreviewPathsEnabled,
+    })
+
+    local InjectApiCheckboxRow = CreateRow(Scope, 5)
+    Scope:New(Jian.Checkbox, {
+        Parent = InjectApiCheckboxRow,
+        Position = UDim2.fromOffset(0, 8),
+        Size = UDim2.new(1, 0, 0, 20),
+        Title = "Inject VFX API",
+        Active = true,
+        Value = InjectVfxApiEnabled,
+    })
+
     local OpenAssetPresetsButton = CreateActionButton(Scope, 2, "Presets", true, function()
         EnsureAssetBrowserInitialized()
 
@@ -1191,13 +1590,25 @@ function Interface:Init() : DockWidgetPluginGui
         Active = true,
 
         [Seam.Children] = {
-            CopyPropertyBox,
+            CopyPropertyDropdown,
+            CopyAmountSlider,
             CopyPasteButtons,
         },
     })
     Scope:New(Jian.ListSection, {
         Parent = Container,
         LayoutOrder = 4,
+        Text = "Resize",
+        Active = true,
+
+        [Seam.Children] = {
+            ResizeMultiplierRow,
+            ResizeApplyButton,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = Container,
+        LayoutOrder = 5,
         Text = "Math Operations",
         Active = true,
 
@@ -1212,34 +1623,51 @@ function Interface:Init() : DockWidgetPluginGui
     })
     Scope:New(Jian.ListSection, {
         Parent = Container,
-        LayoutOrder = 5,
-        Text = "Animation Indicators",
-        Active = true,
-
-        [Seam.Children] = {
-            CreateBezierAnimationButton,
-            CreateTweenAnimationButton,
-        },
-    })
-    Scope:New(Jian.ListSection, {
-        Parent = Container,
         LayoutOrder = 6,
-        Text = "Programmer Resources",
+        Text = "Curve Editor",
         Active = true,
 
         [Seam.Children] = {
-            InsertPlayEffectModuleButton,
-            InsertEffectModuleTemplateButton,
+            CurvePropertyDropdown,
+            CurveEditorWidget,
+            CurveRangeRow,
+            CurveApplyButton,
         },
     })
     Scope:New(Jian.ListSection, {
         Parent = Container,
         LayoutOrder = 7,
+        Text = "Recolor",
+        Active = true,
+
+        [Seam.Children] = {
+            RecolorPicker,
+            RecolorApplyButton,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = Container,
+        LayoutOrder = 8,
         Text = "Assets",
         Active = true,
 
         [Seam.Children] = {
             OpenAssetPresetsButton,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = Container,
+        LayoutOrder = 9,
+        Text = "Advanced",
+        Active = true,
+
+        [Seam.Children] = {
+            CreateBezierAnimationButton,
+            CreateTweenAnimationButton,
+            InsertPlayEffectModuleButton,
+            InsertEffectModuleTemplateButton,
+            PreviewPathsCheckboxRow,
+            InjectApiCheckboxRow,
         },
     })
 
@@ -1261,6 +1689,24 @@ function Interface:Init() : DockWidgetPluginGui
             EmitUtils:DisableRepeatEmit()
         end
     end))
+    Scope:AddObject(Seam.OnChanged(PreviewPathsEnabled, function()
+        EmitUtils:SetPathPreviewEnabled(PreviewPathsEnabled.Value)
+    end))
+    Scope:AddObject(Seam.OnChanged(InjectVfxApiEnabled, function()
+        if InjectVfxApiEnabled.Value then
+            EnsureSharedPlayEffectApi(Bin)
+        end
+    end))
+
+    local InitialCopyOptions = CopyOptions.Value
+    if #InitialCopyOptions > 0 then
+        CopyPropertyText.Value = InitialCopyOptions[1]
+    end
+
+    local InitialCurveOptions = CurveOptions.Value
+    if #InitialCurveOptions > 0 then
+        CurvePropertyText.Value = InitialCurveOptions[1]
+    end
 
     EmitUtils:SetWidget(MainWidget)
 
