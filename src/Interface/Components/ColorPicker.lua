@@ -1,12 +1,10 @@
 local ColorPicker = {}
 
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-
 local Interface = script.Parent.Parent
 local Bin = Interface.Parent
 local Packages = Bin:FindFirstChild("Packages")
 local Seam = require(Packages:FindFirstChild("Seam"))
+local LocalInput = require(Interface.Modules:FindFirstChild("LocalInput"))
 
 local function Clamp01(Value)
     return math.clamp(Value, 0, 1)
@@ -38,7 +36,6 @@ end
 function ColorPicker:Construct(Scope, Properties)
     local PickerSize = 170
     local ValueSliderWidth = 18
-    local DragConnection = nil
 
     local Frame = Scope:New("Frame", {
         Parent = Properties.Parent,
@@ -111,7 +108,7 @@ function ColorPicker:Construct(Scope, Properties)
         Size = UDim2.fromOffset(10, 10),
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = Scope:Computed(function(Use)
-            return UDim2.fromScale(1 - Use(self.H), 1 - Use(self.S))
+            return UDim2.fromScale(Use(self.H), Use(self.S))
         end),
         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
         BorderSizePixel = 0,
@@ -198,87 +195,66 @@ function ColorPicker:Construct(Scope, Properties)
         end),
     })
 
-    local function UpdateFromPickerMouse(MouseLocation)
-        local Relative = MouseLocation - PickerFrame.AbsolutePosition
+    local function UpdateFromPickerMouse(LocalMouse)
         local Width = math.max(1, PickerFrame.AbsoluteSize.X)
         local Height = math.max(1, PickerFrame.AbsoluteSize.Y)
 
-        self.H.Value = Clamp01(1 - (Relative.X / Width))
-        self.S.Value = Clamp01(1 - (Relative.Y / Height))
+        self.H.Value = Clamp01(LocalMouse.X / Width)
+        self.S.Value = Clamp01(LocalMouse.Y / Height)
     end
 
-    local function UpdateFromValueMouse(MouseLocation)
-        local RelativeY = MouseLocation.Y - ValueSlider.AbsolutePosition.Y
+    local function UpdateFromValueMouse(LocalMouse)
         local Height = math.max(1, ValueSlider.AbsoluteSize.Y)
-        self.V.Value = Clamp01(1 - (RelativeY / Height))
-    end
-
-    local function IsMouse1Down()
-        for _, InputType in UserInputService:GetMouseButtonsPressed() do
-            if InputType == Enum.UserInputType.MouseButton1 then
-                return true
-            end
-        end
-
-        return false
+        self.V.Value = Clamp01(1 - (LocalMouse.Y / Height))
     end
 
     local function StopDragging()
         self.IsDraggingPicker.Value = false
         self.IsDraggingValue.Value = false
-
-        if DragConnection then
-            DragConnection:Disconnect()
-            DragConnection = nil
-        end
     end
 
-    local function BeginDrag(Mode)
-        if DragConnection then
-            DragConnection:Disconnect()
-            DragConnection = nil
-        end
+    local PickerDrag = LocalInput.BindPrimaryDrag(Scope, PickerHitbox, function(LocalMouse)
+        UpdateFromPickerMouse(LocalMouse)
+    end, StopDragging)
 
-        self.IsDraggingPicker.Value = Mode == "Picker"
-        self.IsDraggingValue.Value = Mode == "Value"
+    local ValueDrag = LocalInput.BindPrimaryDrag(Scope, ValueHitbox, function(LocalMouse)
+        UpdateFromValueMouse(LocalMouse)
+    end, StopDragging)
 
-        DragConnection = RunService.Heartbeat:Connect(function()
-            if not IsMouse1Down() then
-                StopDragging()
-                return
-            end
-
-            local MouseLocation = UserInputService:GetMouseLocation()
-            if self.IsDraggingPicker.Value then
-                UpdateFromPickerMouse(MouseLocation)
-            elseif self.IsDraggingValue.Value then
-                UpdateFromValueMouse(MouseLocation)
-            end
-        end)
-    end
-
-    Scope:AddObject(PickerHitbox.MouseButton1Down:Connect(function()
+    Scope:AddObject(PickerHitbox.InputBegan:Connect(function(Input)
         if not ReadActiveValue(Properties.Active) then
             return
         end
 
-        UpdateFromPickerMouse(UserInputService:GetMouseLocation())
-        BeginDrag("Picker")
+        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return
+        end
+
+        ValueDrag.Stop()
+        self.IsDraggingPicker.Value = true
+        self.IsDraggingValue.Value = false
+
+        local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
+        local LocalMouse = LocalInput.GetLocalFromScreenPosition(PickerHitbox, ScreenPosition)
+        PickerDrag.Start(LocalMouse)
     end))
 
-    Scope:AddObject(ValueHitbox.MouseButton1Down:Connect(function()
+    Scope:AddObject(ValueHitbox.InputBegan:Connect(function(Input)
         if not ReadActiveValue(Properties.Active) then
             return
         end
 
-        UpdateFromValueMouse(UserInputService:GetMouseLocation())
-        BeginDrag("Value")
-    end))
-
-    Scope:AddObject(UserInputService.InputEnded:Connect(function(Input)
-        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-            StopDragging()
+        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return
         end
+
+        PickerDrag.Stop()
+        self.IsDraggingPicker.Value = false
+        self.IsDraggingValue.Value = true
+
+        local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
+        local LocalMouse = LocalInput.GetLocalFromScreenPosition(ValueHitbox, ScreenPosition)
+        ValueDrag.Start(LocalMouse)
     end))
 
     local function UpdateExternal()

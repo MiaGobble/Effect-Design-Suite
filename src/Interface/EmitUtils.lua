@@ -16,6 +16,7 @@ local RepeatEmitConnection = nil
 local Widget = nil
 local PathPreviewFolder = nil
 local PathPreviewConnections = {}
+local PathPreviewHeartbeatConnection = nil
 
 local function DisconnectPathPreviewConnections()
     for _, Connection in PathPreviewConnections do
@@ -102,6 +103,40 @@ local function DrawPathSegment(FromPosition : Vector3, ToPosition : Vector3, Par
     Beam.Parent = Parent
 end
 
+local function DrawPointMarker(Position : Vector3, Parent : Instance, Name : string, Color : Color3)
+    local Marker = Instance.new("Part")
+    Marker.Name = Name
+    Marker.Anchored = true
+    Marker.CanCollide = false
+    Marker.CanTouch = false
+    Marker.CanQuery = false
+    Marker.Material = Enum.Material.Neon
+    Marker.Color = Color
+    Marker.Shape = Enum.PartType.Ball
+    Marker.Size = Vector3.new(0.22, 0.22, 0.22)
+    Marker.CFrame = CFrame.new(Position)
+    Marker.Parent = Parent
+end
+
+local function DrawControlSegment(FromPosition : Vector3, ToPosition : Vector3, Parent : Instance)
+    local Delta = ToPosition - FromPosition
+    if Delta.Magnitude <= 0.001 then
+        return
+    end
+
+    local Part = Instance.new("Part")
+    Part.Name = "ControlSegment"
+    Part.Anchored = true
+    Part.CanCollide = false
+    Part.CanTouch = false
+    Part.CanQuery = false
+    Part.Material = Enum.Material.Neon
+    Part.Color = Color3.fromRGB(255, 190, 75)
+    Part.Size = Vector3.new(0.05, 0.05, Delta.Magnitude)
+    Part.CFrame = CFrame.lookAt(FromPosition, ToPosition) * CFrame.new(0, 0, -Delta.Magnitude * 0.5)
+    Part.Parent = Parent
+end
+
 local function EvaluateBezier(ControlPoints : {Vector3}, T : number)
     local Working = table.clone(ControlPoints)
 
@@ -157,6 +192,20 @@ local function BuildIndicatorPathPreview(AnimationIndicator : StringValue, Paren
         end
 
         table.insert(Points, Target.WorldPosition)
+
+        for Index = 1, #Points do
+            if Index == 1 then
+                DrawPointMarker(Points[Index], Parent, "OriginMarker", Color3.fromRGB(95, 210, 255))
+            elseif Index == #Points then
+                DrawPointMarker(Points[Index], Parent, "TargetMarker", Color3.fromRGB(120, 255, 130))
+            else
+                DrawPointMarker(Points[Index], Parent, "MidpointMarker", Color3.fromRGB(255, 205, 90))
+            end
+
+            if Index < #Points then
+                DrawControlSegment(Points[Index], Points[Index + 1], Parent)
+            end
+        end
 
         local Last = Points[1]
         local Steps = 50
@@ -336,14 +385,25 @@ end
 
 function EmitUtils:SetPathPreviewEnabled(Enabled : boolean)
     if not Enabled then
+        if PathPreviewHeartbeatConnection then
+            PathPreviewHeartbeatConnection:Disconnect()
+            PathPreviewHeartbeatConnection = nil
+        end
+
         DisconnectPathPreviewConnections()
         ClearPathPreview()
         return
     end
 
+    if PathPreviewHeartbeatConnection then
+        PathPreviewHeartbeatConnection:Disconnect()
+        PathPreviewHeartbeatConnection = nil
+    end
+
     DisconnectPathPreviewConnections()
     table.insert(PathPreviewConnections, Seam.OnChanged(States.CurrentlySelected, RefreshPathPreview))
     table.insert(PathPreviewConnections, Seam.OnChanged(States.RawSelection, RefreshPathPreview))
+    PathPreviewHeartbeatConnection = RunService.Heartbeat:Connect(RefreshPathPreview)
     RefreshPathPreview()
 end
 

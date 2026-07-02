@@ -1,12 +1,10 @@
 local CurveEditor = {}
 
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-
 local Interface = script.Parent.Parent
 local Bin = Interface.Parent
 local Packages = Bin:FindFirstChild("Packages")
 local Seam = require(Packages:FindFirstChild("Seam"))
+local LocalInput = require(Interface.Modules:FindFirstChild("LocalInput"))
 
 local PADDING = 8
 
@@ -89,7 +87,7 @@ function CurveEditor:Construct(Scope, Properties)
     local DragStartValue = 0
     local DragStartHandleX = 0
     local DragStartHandleY = 0
-    local DragConnection = nil
+    local DragSession
 
     local Frame = Scope:New("Frame", {
         Parent = Properties.Parent,
@@ -145,7 +143,7 @@ function CurveEditor:Construct(Scope, Properties)
         Text = "",
         AutoButtonColor = false,
         Size = UDim2.fromScale(1, 1),
-        ZIndex = 10,
+        ZIndex = 1,
         Active = true,
     })
 
@@ -244,11 +242,10 @@ function CurveEditor:Construct(Scope, Properties)
         return Vector2.new(X, Y)
     end
 
-    local function ToCurvePosition(ScreenVector)
-        local Relative = ScreenVector - Frame.AbsolutePosition
+    local function ToCurvePosition(LocalVector)
         local Width, Height = GetGraphSize()
-        local Time = Clamp01((Relative.X - PADDING) / Width)
-        local Value = Clamp01(1 - ((Relative.Y - PADDING) / Height))
+        local Time = Clamp01((LocalVector.X - PADDING) / Width)
+        local Value = Clamp01(1 - ((LocalVector.Y - PADDING) / Height))
         return Time, Value
     end
 
@@ -356,19 +353,26 @@ function CurveEditor:Construct(Scope, Properties)
                     Text = "",
                     AutoButtonColor = false,
                     Active = Properties.Active,
-                    [Seam.OnEvent("MouseButton1Down")] = function()
-                        if not ReadActiveValue(Properties.Active) then
-                            return
-                        end
-
-                        self.ActiveHandle.Value = {Index = Index, Kind = "In"}
-                        DragStartMouse = UserInputService:GetMouseLocation()
-                        DragStartHandleX = Point.InHandleX
-                        DragStartHandleY = Point.InHandleY
-                        self.IsDragging.Value = true
-                    end,
                 })
-                InHit.ZIndex = 4
+                InHit.ZIndex = 60
+
+                Scope:AddObject(InHit.InputBegan:Connect(function(Input)
+                    if not ReadActiveValue(Properties.Active) then
+                        return
+                    end
+
+                    if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                        return
+                    end
+
+                    self.ActiveHandle.Value = {Index = Index, Kind = "In"}
+                    local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
+                    DragStartMouse = LocalInput.GetLocalFromScreenPosition(Frame, ScreenPosition)
+                    DragStartHandleX = Point.InHandleX
+                    DragStartHandleY = Point.InHandleY
+                    self.IsDragging.Value = true
+                    DragSession.Start(DragStartMouse)
+                end))
             end
 
             if Index < #Points then
@@ -384,19 +388,26 @@ function CurveEditor:Construct(Scope, Properties)
                     Text = "",
                     AutoButtonColor = false,
                     Active = Properties.Active,
-                    [Seam.OnEvent("MouseButton1Down")] = function()
-                        if not ReadActiveValue(Properties.Active) then
-                            return
-                        end
-
-                        self.ActiveHandle.Value = {Index = Index, Kind = "Out"}
-                        DragStartMouse = UserInputService:GetMouseLocation()
-                        DragStartHandleX = Point.OutHandleX
-                        DragStartHandleY = Point.OutHandleY
-                        self.IsDragging.Value = true
-                    end,
                 })
-                OutHit.ZIndex = 4
+                OutHit.ZIndex = 60
+
+                Scope:AddObject(OutHit.InputBegan:Connect(function(Input)
+                    if not ReadActiveValue(Properties.Active) then
+                        return
+                    end
+
+                    if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                        return
+                    end
+
+                    self.ActiveHandle.Value = {Index = Index, Kind = "Out"}
+                    local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
+                    DragStartMouse = LocalInput.GetLocalFromScreenPosition(Frame, ScreenPosition)
+                    DragStartHandleX = Point.OutHandleX
+                    DragStartHandleY = Point.OutHandleY
+                    self.IsDragging.Value = true
+                    DragSession.Start(DragStartMouse)
+                end))
             end
 
             DrawDot(PointLayer, PointPixel, 10, Color3.fromRGB(245, 245, 245))
@@ -409,19 +420,27 @@ function CurveEditor:Construct(Scope, Properties)
                 Text = "",
                 AutoButtonColor = false,
                 Active = Properties.Active,
-                [Seam.OnEvent("MouseButton1Down")] = function()
-                    if not ReadActiveValue(Properties.Active) then
-                        return
-                    end
+            })
+            PointHit.ZIndex = 61
 
+            Scope:AddObject(PointHit.InputBegan:Connect(function(Input)
+                if not ReadActiveValue(Properties.Active) then
+                    return
+                end
+
+                if Input.UserInputType == Enum.UserInputType.MouseButton1 then
                     self.ActivePointIndex.Value = Index
                     self.ActiveHandle.Value = nil
-                    DragStartMouse = UserInputService:GetMouseLocation()
+                    local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
+                    DragStartMouse = LocalInput.GetLocalFromScreenPosition(Frame, ScreenPosition)
                     DragStartTime = Point.Time
                     DragStartValue = Point.Value
                     self.IsDragging.Value = true
-                end,
-                [Seam.OnEvent("MouseButton2Down")] = function()
+                    DragSession.Start(DragStartMouse)
+                    return
+                end
+
+                if Input.UserInputType == Enum.UserInputType.MouseButton2 then
                     if not ReadActiveValue(Properties.Active) then
                         return
                     end
@@ -434,14 +453,12 @@ function CurveEditor:Construct(Scope, Properties)
                     table.remove(Updated, Index)
                     Properties.Points.Value = Updated
                     RenderVisuals()
-                end,
-            })
-            PointHit.ZIndex = 5
+                end
+            end))
         end
     end
 
-    local function IsNearExistingControl(Mouse)
-        local MousePosition = Vector2.new(Mouse.Position.X, Mouse.Position.Y) - Frame.AbsolutePosition
+    local function IsNearExistingControl(MousePosition)
         local Points = GetPointsCopy()
 
         for Index, Point in ipairs(Points) do
@@ -468,17 +485,19 @@ function CurveEditor:Construct(Scope, Properties)
         return false
     end
 
-    Scope:AddObject(InteractionLayer.MouseButton1Down:Connect(function()
+    Scope:AddObject(InteractionLayer.InputBegan:Connect(function(Input)
         if not ReadActiveValue(Properties.Active) then
             return
         end
 
-        local MouseLocation = UserInputService:GetMouseLocation()
-        local FakeInput = {
-            Position = Vector3.new(MouseLocation.X, MouseLocation.Y, 0),
-        }
+        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return
+        end
 
-        if IsNearExistingControl(FakeInput) then
+        local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
+        local MouseLocation = LocalInput.GetLocalFromScreenPosition(Frame, ScreenPosition)
+
+        if IsNearExistingControl(MouseLocation) then
             return
         end
 
@@ -503,85 +522,57 @@ function CurveEditor:Construct(Scope, Properties)
         self.IsDragging.Value = false
         self.ActivePointIndex.Value = nil
         self.ActiveHandle.Value = nil
-
-        if DragConnection then
-            DragConnection:Disconnect()
-            DragConnection = nil
-        end
     end
 
-    local function IsMouse1Down()
-        for _, InputType in UserInputService:GetMouseButtonsPressed() do
-            if InputType == Enum.UserInputType.MouseButton1 then
-                return true
+    DragSession = LocalInput.BindPrimaryDrag(Scope, Frame, function(MouseLocation)
+        local NewPoints = GetPointsCopy()
+
+        if self.ActivePointIndex.Value ~= nil then
+            local Index = self.ActivePointIndex.Value
+            local Point = NewPoints[Index]
+            if not Point then
+                return
             end
-        end
 
-        return false
-    end
-
-    Scope:AddObject(Seam.OnChanged(self.IsDragging, function()
-        if not self.IsDragging.Value then
-            StopDrag()
+            local Width, Height = GetGraphSize()
+            local Delta = MouseLocation - DragStartMouse
+            Point.Time = Clamp01(DragStartTime + (Delta.X / math.max(1, Width)))
+            Point.Value = Clamp01(DragStartValue - (Delta.Y / math.max(1, Height)))
+            SortPoints(NewPoints)
+            Properties.Points.Value = NewPoints
+            RenderVisuals()
             return
         end
 
-        if DragConnection then
-            DragConnection:Disconnect()
-            DragConnection = nil
+        if self.ActiveHandle.Value ~= nil then
+            local HandleData = self.ActiveHandle.Value
+            local Point = NewPoints[HandleData.Index]
+            if not Point then
+                return
+            end
+
+            local Width, Height = GetGraphSize()
+            local Delta = MouseLocation - DragStartMouse
+            local DeltaTime = Delta.X / math.max(1, Width)
+            local DeltaValue = -(Delta.Y / math.max(1, Height))
+
+            if HandleData.Kind == "Out" then
+                Point.OutHandleX = math.max(0, DragStartHandleX + DeltaTime)
+                Point.OutHandleY = DragStartHandleY + DeltaValue
+            else
+                Point.InHandleX = math.min(0, DragStartHandleX + DeltaTime)
+                Point.InHandleY = DragStartHandleY + DeltaValue
+            end
+
+            Properties.Points.Value = NewPoints
+            RenderVisuals()
         end
+    end, StopDrag)
 
-        DragConnection = RunService.Heartbeat:Connect(function()
-            if not IsMouse1Down() then
-                StopDrag()
-                return
-            end
-
-            local MouseLocation = UserInputService:GetMouseLocation()
-
-            local NewPoints = GetPointsCopy()
-
-            if self.ActivePointIndex.Value ~= nil then
-                local Index = self.ActivePointIndex.Value
-                local Point = NewPoints[Index]
-                if not Point then
-                    return
-                end
-
-                local Width, Height = GetGraphSize()
-                local Delta = MouseLocation - DragStartMouse
-                Point.Time = Clamp01(DragStartTime + (Delta.X / math.max(1, Width)))
-                Point.Value = Clamp01(DragStartValue - (Delta.Y / math.max(1, Height)))
-                SortPoints(NewPoints)
-                Properties.Points.Value = NewPoints
-                RenderVisuals()
-                return
-            end
-
-            if self.ActiveHandle.Value ~= nil then
-                local HandleData = self.ActiveHandle.Value
-                local Point = NewPoints[HandleData.Index]
-                if not Point then
-                    return
-                end
-
-                local Width, Height = GetGraphSize()
-                local Delta = MouseLocation - DragStartMouse
-                local DeltaTime = Delta.X / math.max(1, Width)
-                local DeltaValue = -(Delta.Y / math.max(1, Height))
-
-                if HandleData.Kind == "Out" then
-                    Point.OutHandleX = math.max(0, DragStartHandleX + DeltaTime)
-                    Point.OutHandleY = DragStartHandleY + DeltaValue
-                else
-                    Point.InHandleX = math.min(0, DragStartHandleX + DeltaTime)
-                    Point.InHandleY = DragStartHandleY + DeltaValue
-                end
-
-                Properties.Points.Value = NewPoints
-                RenderVisuals()
-            end
-        end)
+    Scope:AddObject(Seam.OnChanged(self.IsDragging, function()
+        if not self.IsDragging.Value then
+            DragSession.Stop()
+        end
     end))
 
     Scope:AddObject(Seam.OnChanged(Properties.Points, RenderVisuals))

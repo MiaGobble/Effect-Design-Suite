@@ -71,6 +71,18 @@ function Dropdown:Construct(Scope, Properties)
         ZIndex = BASE_Z,
     })
 
+    local OverlayRoot = Scope:New("Frame", {
+        Parent = Root,
+        Name = "DropdownOverlay",
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.fromScale(1, 1),
+        ClipsDescendants = false,
+        ZIndex = BASE_Z + 8,
+        Visible = self.IsOpen,
+    })
+
     local Container = Scope:New("Frame", {
         Parent = Root,
         Position = UDim2.fromOffset(0, 0),
@@ -177,7 +189,7 @@ function Dropdown:Construct(Scope, Properties)
     })
 
     local ListFrame = Scope:New("ScrollingFrame", {
-        Parent = Root,
+        Parent = OverlayRoot,
         Position = UDim2.fromOffset(0, CLOSED_HEIGHT + 5),
         Size = UDim2.fromScale(1, 0),
         AutomaticCanvasSize = Enum.AutomaticSize.None,
@@ -227,8 +239,28 @@ function Dropdown:Construct(Scope, Properties)
         local FullHeight = math.max(1, #Options) * (ROW_HEIGHT + 4) + 8
         local VisibleHeight = math.min(MAX_LIST_HEIGHT, FullHeight)
 
+        local Widget = Root:FindFirstAncestorWhichIsA("DockWidgetPluginGui")
+        local RootPosition = Vector2.new(0, 0)
+
+        if Widget then
+            if OverlayRoot.Parent ~= Widget then
+                OverlayRoot.Parent = Widget
+            end
+
+            RootPosition = Root.AbsolutePosition - Widget.AbsolutePosition
+        else
+            if OverlayRoot.Parent ~= Root then
+                OverlayRoot.Parent = Root
+            end
+
+            RootPosition = Vector2.new(0, 0)
+        end
+
+        local RootWidth = Root.AbsoluteSize.X
+        ListFrame.Position = UDim2.fromOffset(RootPosition.X, RootPosition.Y + CLOSED_HEIGHT + 5)
+
         ListFrame.CanvasSize = UDim2.fromOffset(0, FullHeight)
-        ListFrame.Size = if self.IsOpen.Value then UDim2.new(1, 0, 0, VisibleHeight) else UDim2.fromScale(1, 0)
+        ListFrame.Size = if self.IsOpen.Value then UDim2.fromOffset(RootWidth, VisibleHeight) else UDim2.fromOffset(RootWidth, 0)
         Root.Size = UDim2.new(1, 0, 0, CLOSED_HEIGHT)
     end
 
@@ -296,9 +328,13 @@ function Dropdown:Construct(Scope, Properties)
     end
 
     Scope:AddObject(Seam.OnChanged(self.IsOpen, function()
+        OverlayRoot.Visible = self.IsOpen.Value
         ListFrame.Visible = self.IsOpen.Value
         RefreshLayout()
     end))
+
+    Scope:AddObject(Root:GetPropertyChangedSignal("AbsolutePosition"):Connect(RefreshLayout))
+    Scope:AddObject(Root:GetPropertyChangedSignal("AbsoluteSize"):Connect(RefreshLayout))
 
     if typeof(OptionsSource) == "table" and OptionsSource.Value ~= nil then
         Scope:AddObject(Seam.OnChanged(OptionsSource, function()

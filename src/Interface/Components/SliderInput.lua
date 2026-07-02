@@ -1,13 +1,11 @@
 local SliderInput = {}
 
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-
 local Interface = script.Parent.Parent
 local Bin = Interface.Parent
 local Packages = Bin:FindFirstChild("Packages")
 local Seam = require(Packages:FindFirstChild("Seam"))
 local Jian = require(Packages:FindFirstChild("Jian"))
+local LocalInput = require(Interface.Modules:FindFirstChild("LocalInput"))
 
 local function Clamp01(Value)
     return math.clamp(Value, 0, 1)
@@ -58,13 +56,33 @@ function SliderInput:Construct(Scope, Properties)
         return string.format("%.2f", Rounded)
     end
 
+    local function GetStepDecimals()
+        if not Step or Step <= 0 then
+            return 6
+        end
+
+        local StepText = tostring(Step)
+        local DecimalPart = StepText:match("%.(%d+)")
+        if not DecimalPart then
+            return 0
+        end
+
+        return math.min(6, #DecimalPart)
+    end
+
+    local function RoundToDecimals(Value, Decimals)
+        local Multiplier = 10 ^ Decimals
+        return math.floor((Value * Multiplier) + 0.5) / Multiplier
+    end
+
     local function ApplyStep(Value)
         if not Step or Step <= 0 then
-            return Value
+            return RoundToDecimals(Value, 6)
         end
 
         local Steps = math.floor((Value / Step) + 0.5)
-        return Steps * Step
+        local Snapped = Steps * Step
+        return RoundToDecimals(Snapped, GetStepDecimals())
     end
 
     local Frame = Scope:New("Frame", {
@@ -142,37 +160,9 @@ function SliderInput:Construct(Scope, Properties)
         },
     })
 
-    local LastTrackLocalX = 0
-    local DragConnection = nil
-
-    Scope:AddObject(SliderTrack.MouseMoved:Connect(function(X)
-        LastTrackLocalX = X
-    end))
-
-    local function IsMouse1Down()
-        for _, InputType in UserInputService:GetMouseButtonsPressed() do
-            if InputType == Enum.UserInputType.MouseButton1 then
-                return true
-            end
-        end
-
-        return false
-    end
-
-    local function GetCurrentMousePosition()
-        local Widget = SliderTrack:FindFirstAncestorWhichIsA("DockWidgetPluginGui")
-
-        if Widget then
-            return Widget:GetRelativeMousePosition().X
-        end
-
-        return UserInputService:GetMouseLocation().X
-    end
-
-    local function ProcessInput(PositionX)
-        local AbsolutePosition = SliderTrack.AbsolutePosition.X
+    local function ProcessLocalInput(LocalPositionX)
         local AbsoluteSize = math.max(1, SliderTrack.AbsoluteSize.X)
-        local Alpha = Clamp01((PositionX - AbsolutePosition) / AbsoluteSize)
+        local Alpha = Clamp01(LocalPositionX / AbsoluteSize)
         local Value = Min + (Max - Min) * Alpha
 
         if Properties.Value then
@@ -180,70 +170,36 @@ function SliderInput:Construct(Scope, Properties)
         end
     end
 
-    local function StopDrag()
+    local DragSession = LocalInput.BindPrimaryDrag(Scope, SliderTrack, function(LocalMouse)
+        ProcessLocalInput(LocalMouse.X)
+    end, function()
         self.Dragging.Value = false
+    end)
 
-        if DragConnection then
-            DragConnection:Disconnect()
-            DragConnection = nil
-        end
-    end
-
-    local function StartDrag()
+    local function StartDrag(StartLocalPosition)
         self.Dragging.Value = true
-
-        if DragConnection then
-            DragConnection:Disconnect()
-            DragConnection = nil
-        end
-
-        DragConnection = RunService.Heartbeat:Connect(function()
-            if not IsMouse1Down() then
-                StopDrag()
-                return
-            end
-
-            ProcessInput(GetCurrentMousePosition())
-        end)
+        DragSession.Start(StartLocalPosition)
     end
 
-    Scope:New("TextButton", {
+    local Hitbox = Scope:New("TextButton", {
         Parent = SliderTrack,
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         Text = "",
         AutoButtonColor = false,
         Active = Properties.Active,
-        [Seam.OnEvent("MouseButton1Down")] = function()
-            if not ReadActiveValue() then
-                return
-            end
-
-            if Properties.Value then
-                local Width = math.max(1, SliderTrack.AbsoluteSize.X)
-                local Alpha = Clamp01(LastTrackLocalX / Width)
-                Properties.Value.Value = ApplyStep(Min + (Max - Min) * Alpha)
-            end
-
-            StartDrag()
-        end,
     })
 
-    Scope:AddObject(UserInputService.InputChanged:Connect(function(Input)
-        if not self.Dragging.Value then
+    Scope:AddObject(Hitbox.InputBegan:Connect(function(Input)
+        if not ReadActiveValue() then
             return
         end
 
-        if Input.UserInputType ~= Enum.UserInputType.MouseMovement then
-            return
-        end
-
-        ProcessInput(Input.Position.X)
-    end))
-
-    Scope:AddObject(UserInputService.InputEnded:Connect(function(Input)
         if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-            StopDrag()
+            local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
+            local LocalMouse = LocalInput.GetLocalFromScreenPosition(SliderTrack, ScreenPosition)
+            ProcessLocalInput(LocalMouse.X)
+            StartDrag(LocalMouse)
         end
     end))
 
@@ -251,7 +207,7 @@ function SliderInput:Construct(Scope, Properties)
 
     Scope:AddObject(Seam.OnChanged(Properties.Value, function()
         if Properties.Value then
-            InputState.Value = tostring(Properties.Value.Value)
+            InputState.Value = FormatNumber(Properties.Value.Value)
         end
     end))
 
@@ -282,7 +238,7 @@ function SliderInput:Construct(Scope, Properties)
             Properties.Value.Value = NumberValue
         end
 
-        InputState.Value = tostring(NumberValue)
+        InputState.Value = FormatNumber(NumberValue)
     end))
 
     if Properties.Value then
