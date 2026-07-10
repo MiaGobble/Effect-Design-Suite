@@ -82,8 +82,8 @@ function ColorPicker:Construct(Scope, Properties)
                 [Seam.Children] = {
                     Scope:New("UIGradient", {
                         Transparency = NumberSequence.new({
-                            NumberSequenceKeypoint.new(0, 1),
-                            NumberSequenceKeypoint.new(1, 0),
+                            NumberSequenceKeypoint.new(0, 0),
+                            NumberSequenceKeypoint.new(1, 1),
                         }),
                         Rotation = 90,
                     }),
@@ -236,7 +236,7 @@ function ColorPicker:Construct(Scope, Properties)
 
         local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
         local LocalMouse = LocalInput.GetLocalFromScreenPosition(PickerHitbox, ScreenPosition)
-        PickerDrag.Start(LocalMouse)
+        PickerDrag.Start(LocalMouse, Input)
     end))
 
     Scope:AddObject(ValueHitbox.InputBegan:Connect(function(Input)
@@ -254,7 +254,7 @@ function ColorPicker:Construct(Scope, Properties)
 
         local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
         local LocalMouse = LocalInput.GetLocalFromScreenPosition(ValueHitbox, ScreenPosition)
-        ValueDrag.Start(LocalMouse)
+        ValueDrag.Start(LocalMouse, Input)
     end))
 
     local function UpdateExternal()

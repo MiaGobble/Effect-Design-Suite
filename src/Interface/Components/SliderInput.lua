@@ -176,9 +176,9 @@ function SliderInput:Construct(Scope, Properties)
         self.Dragging.Value = false
     end)
 
-    local function StartDrag(StartLocalPosition)
+    local function StartDrag(StartLocalPosition, Input)
         self.Dragging.Value = true
-        DragSession.Start(StartLocalPosition)
+        DragSession.Start(StartLocalPosition, Input)
     end
 
     local Hitbox = Scope:New("TextButton", {
@@ -199,7 +199,7 @@ function SliderInput:Construct(Scope, Properties)
             local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
             local LocalMouse = LocalInput.GetLocalFromScreenPosition(SliderTrack, ScreenPosition)
             ProcessLocalInput(LocalMouse.X)
-            StartDrag(LocalMouse)
+            StartDrag(LocalMouse, Input)
         end
     end))
 

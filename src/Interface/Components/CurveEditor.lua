@@ -371,7 +371,7 @@ function CurveEditor:Construct(Scope, Properties)
                     DragStartHandleX = Point.InHandleX
                     DragStartHandleY = Point.InHandleY
                     self.IsDragging.Value = true
-                    DragSession.Start(DragStartMouse)
+                    DragSession.Start(DragStartMouse, Input)
                 end))
             end
 
@@ -406,7 +406,7 @@ function CurveEditor:Construct(Scope, Properties)
                     DragStartHandleX = Point.OutHandleX
                     DragStartHandleY = Point.OutHandleY
                     self.IsDragging.Value = true
-                    DragSession.Start(DragStartMouse)
+                    DragSession.Start(DragStartMouse, Input)
                 end))
             end
 
@@ -436,7 +436,7 @@ function CurveEditor:Construct(Scope, Properties)
                     DragStartTime = Point.Time
                     DragStartValue = Point.Value
                     self.IsDragging.Value = true
-                    DragSession.Start(DragStartMouse)
+                    DragSession.Start(DragStartMouse, Input)
                     return
                 end
 

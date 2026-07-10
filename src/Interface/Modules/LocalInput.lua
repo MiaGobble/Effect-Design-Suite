@@ -1,44 +1,34 @@
 local LocalInput = {}
 
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 
-local function TryConnectSignal(Object, SignalName, Callback)
-    local Ok, Signal = pcall(function()
-        return Object[SignalName]
-    end)
-
-    if not Ok or typeof(Signal) ~= "RBXScriptSignal" then
+local function GetPluginMousePosition(GuiObject : GuiObject) : Vector2?
+    local PluginGui = GuiObject:FindFirstAncestorWhichIsA("PluginGui")
+    if not PluginGui then
         return nil
     end
 
-    return Signal:Connect(Callback)
-end
-
-local function TryGetOrCreateDragDetector(GuiObject : GuiObject)
-    local Existing = GuiObject:FindFirstChildOfClass("UIDragDetector")
-    if Existing then
-        return Existing
-    end
-
-    local Ok, Detector = pcall(function()
-        return Instance.new("UIDragDetector")
+    local Success, Position = pcall(function()
+        return PluginGui:GetRelativeMousePosition()
     end)
 
-    if not Ok or not Detector then
-        return nil
+    if Success and typeof(Position) == "Vector2" then
+        return Position
     end
 
-    Detector.Parent = GuiObject
-    return Detector
+    return nil
 end
 
 function LocalInput.GetLocalFromScreenPosition(GuiObject : GuiObject, ScreenPosition : Vector2)
-    return ScreenPosition - GuiObject.AbsolutePosition
+    -- AbsolutePosition is relative to a PluginGui, while InputObject.Position is
+    -- relative to the Studio window. Use the plugin-local pointer when possible.
+    local PointerPosition = GetPluginMousePosition(GuiObject) or ScreenPosition
+    return PointerPosition - GuiObject.AbsolutePosition
 end
 
 function LocalInput.GetLocalMousePosition(GuiObject : GuiObject)
-    return LocalInput.GetLocalFromScreenPosition(GuiObject, UserInputService:GetMouseLocation())
+    local PointerPosition = GetPluginMousePosition(GuiObject) or UserInputService:GetMouseLocation()
+    return PointerPosition - GuiObject.AbsolutePosition
 end
 
 function LocalInput.BindPrimaryDrag(Scope, GuiObject : GuiObject, OnMoved : (Vector2) -> (), OnStopped : (() -> ())?)
@@ -46,11 +36,8 @@ function LocalInput.BindPrimaryDrag(Scope, GuiObject : GuiObject, OnMoved : (Vec
     local GlobalMoveConnection = nil
     local EndConnection = nil
     local GlobalEndConnection = nil
-    local DragContinueConnection = nil
-    local DragEndConnection = nil
-    local PollConnection = nil
-
-    local DragDetector = TryGetOrCreateDragDetector(GuiObject)
+    local PrimaryInputConnection = nil
+    local IsActive = false
 
     local function DisconnectConnections()
         if MoveConnection then
@@ -73,47 +60,19 @@ function LocalInput.BindPrimaryDrag(Scope, GuiObject : GuiObject, OnMoved : (Vec
             GlobalEndConnection = nil
         end
 
-        if DragContinueConnection then
-            DragContinueConnection:Disconnect()
-            DragContinueConnection = nil
+        if PrimaryInputConnection then
+            PrimaryInputConnection:Disconnect()
+            PrimaryInputConnection = nil
         end
 
-        if DragEndConnection then
-            DragEndConnection:Disconnect()
-            DragEndConnection = nil
-        end
-
-        if PollConnection then
-            PollConnection:Disconnect()
-            PollConnection = nil
-        end
-    end
-
-    local function IsPrimaryMouseDown()
-        local OkPressed, IsPressed = pcall(function()
-            return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-        end)
-
-        if OkPressed and IsPressed then
-            return true
-        end
-
-        local OkButtons, Buttons = pcall(function()
-            return UserInputService:GetMouseButtonsPressed()
-        end)
-
-        if OkButtons and Buttons then
-            for _, Button in Buttons do
-                if Button == Enum.UserInputType.MouseButton1 then
-                    return true
-                end
-            end
-        end
-
-        return false
+        IsActive = false
     end
 
     local function Stop()
+        if not IsActive then
+            return
+        end
+
         DisconnectConnections()
 
         if OnStopped then
@@ -121,17 +80,23 @@ function LocalInput.BindPrimaryDrag(Scope, GuiObject : GuiObject, OnMoved : (Vec
         end
     end
 
-    local function Start(StartLocalPosition : Vector2?)
+    local function Start(StartLocalPosition : Vector2?, PrimaryInput : InputObject?)
         DisconnectConnections()
+        IsActive = true
 
-        if StartLocalPosition then
-            OnMoved(StartLocalPosition)
-        else
-            OnMoved(LocalInput.GetLocalMousePosition(GuiObject))
+        OnMoved(StartLocalPosition or LocalInput.GetLocalMousePosition(GuiObject))
+
+        if PrimaryInput then
+            PrimaryInputConnection = PrimaryInput:GetPropertyChangedSignal("UserInputState"):Connect(function()
+                if PrimaryInput.UserInputState == Enum.UserInputState.End
+                    or PrimaryInput.UserInputState == Enum.UserInputState.Cancel then
+                    Stop()
+                end
+            end)
         end
 
-        MoveConnection = GuiObject.MouseMoved:Connect(function(LocalX, LocalY)
-            OnMoved(Vector2.new(LocalX, LocalY))
+        MoveConnection = GuiObject.MouseMoved:Connect(function()
+            OnMoved(LocalInput.GetLocalMousePosition(GuiObject))
         end)
 
         GlobalMoveConnection = UserInputService.InputChanged:Connect(function(Input)
@@ -154,22 +119,6 @@ function LocalInput.BindPrimaryDrag(Scope, GuiObject : GuiObject, OnMoved : (Vec
                 Stop()
             end
         end)
-
-        PollConnection = RunService.Heartbeat:Connect(function()
-            if not IsPrimaryMouseDown() then
-                Stop()
-            end
-        end)
-
-        if DragDetector then
-            DragContinueConnection = TryConnectSignal(DragDetector, "DragContinue", function()
-                OnMoved(LocalInput.GetLocalMousePosition(GuiObject))
-            end)
-
-            DragEndConnection = TryConnectSignal(DragDetector, "DragEnd", function()
-                Stop()
-            end)
-        end
     end
 
     Scope:AddObject(function()
@@ -180,7 +129,7 @@ function LocalInput.BindPrimaryDrag(Scope, GuiObject : GuiObject, OnMoved : (Vec
         Start = Start,
         Stop = Stop,
         IsDragging = function()
-            return MoveConnection ~= nil
+            return IsActive
         end,
     }
 end
