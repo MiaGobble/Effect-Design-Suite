@@ -84,19 +84,118 @@ function EffectOps.ApplyResizeMultiplier(Multiplier : number, Instances : {Insta
     end
 end
 
-function EffectOps.BuildNumberSequenceFromCurve(Points : {{Time : number, Value : number}}, MaxRange : number)
+function EffectOps.ReadCurvePointsFromNumberSequence(Sequence : NumberSequence)
+    local Keypoints = Sequence.Keypoints
+        local MinValue = math.huge
+    local MaxValue = -math.huge
+
+    for _, Keypoint in Keypoints do
+        MinValue = math.min(MinValue, Keypoint.Value)
+        MaxValue = math.max(MaxValue, Keypoint.Value)
+    end
+
+    if MinValue == math.huge then
+        MinValue = 0
+        MaxValue = 1
+    elseif MaxValue <= MinValue then
+        MaxValue = MinValue + 1
+    end
+
+    local ValueRange = MaxValue - MinValue
+
+    local Points = {}
+    for _, Keypoint in Keypoints do
+        table.insert(Points, {
+            Time = Keypoint.Time,
+            Value = math.clamp((Keypoint.Value - MinValue) / ValueRange, 0, 1),
+            -- Existing NumberSequences have no tangent data, so preserve them as
+            -- piecewise-linear curves until the user edits a handle.
+            InHandleX = 0,
+            InHandleY = 0,
+            OutHandleX = 0,
+            OutHandleY = 0,
+        })
+    end
+
+        return Points, MinValue, MaxValue
+end
+
+function EffectOps.BuildNumberSequenceFromCurve(Points : {{Time : number, Value : number}}, MinRange : number, MaxRange : number)
     local Sorted = table.clone(Points)
     table.sort(Sorted, function(Left, Right)
         return Left.Time < Right.Time
     end)
 
-    local Keypoints = {}
+    if #Sorted == 0 then
+        return NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0)})
+    end
 
-    for _, Point in Sorted do
-        table.insert(Keypoints, NumberSequenceKeypoint.new(
-            math.clamp(Point.Time, 0, 1),
-            math.clamp(Point.Value, 0, 1) * MaxRange
-        ))
+    local function GetHandle(Point, Prefix, DefaultX)
+        local X = Point[Prefix .. "HandleX"]
+        local Y = Point[Prefix .. "HandleY"]
+
+        -- Support the original handle fields used by older curve data.
+        if X == nil and Prefix == "Out" then
+            X = Point.OutHandle
+        elseif X == nil and Prefix == "In" then
+            X = Point.InHandle
+        end
+
+        return X or DefaultX, Y or 0
+    end
+
+    local function Cubic(A, B, C, D, T)
+        local U = 1 - T
+        return A * U * U * U + 3 * B * U * U * T + 3 * C * U * T * T + D * T * T * T
+    end
+
+    local Samples = {}
+    local SamplesPerSegment = math.max(2, math.floor(90 / math.max(1, #Sorted - 1)))
+
+    for Index = 1, #Sorted - 1 do
+        local Start = Sorted[Index]
+        local Finish = Sorted[Index + 1]
+        local OutX, OutY = GetHandle(Start, "Out", 0)
+        local InX, InY = GetHandle(Finish, "In", 0)
+
+        for Step = 0, SamplesPerSegment - 1 do
+            local T = Step / SamplesPerSegment
+            table.insert(Samples, {
+                Time = Cubic(Start.Time, Start.Time + OutX, Finish.Time + InX, Finish.Time, T),
+                Value = Cubic(Start.Value, Start.Value + OutY, Finish.Value + InY, Finish.Value, T),
+            })
+        end
+    end
+
+    local Last = Sorted[#Sorted]
+    table.insert(Samples, {Time = Last.Time, Value = Last.Value})
+    table.sort(Samples, function(Left, Right)
+        return Left.Time < Right.Time
+    end)
+
+    local Keypoints = {}
+    local LastTime = nil
+    for _, Sample in Samples do
+        local Time = math.clamp(Sample.Time, 0, 1)
+        if LastTime == nil or Time > LastTime then
+            table.insert(Keypoints, NumberSequenceKeypoint.new(
+                Time,
+                MinRange + math.clamp(Sample.Value, 0, 1) * (MaxRange - MinRange)
+            ))
+            LastTime = Time
+        end
+    end
+
+        -- NumberSequence has a relatively small keypoint limit. Keep enough samples
+    -- to retain the curve shape without passing an oversized table to Roblox.
+    local MaximumKeypoints = 20
+    if #Keypoints > MaximumKeypoints then
+        local Simplified = {}
+        for Index = 0, MaximumKeypoints - 1 do
+            local SourceIndex = math.floor(Index * (#Keypoints - 1) / (MaximumKeypoints - 1)) + 1
+            table.insert(Simplified, Keypoints[SourceIndex])
+        end
+        Keypoints = Simplified
     end
 
     return NumberSequence.new(Keypoints)

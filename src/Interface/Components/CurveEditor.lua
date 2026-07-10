@@ -106,7 +106,7 @@ function CurveEditor:Construct(Scope, Properties)
             }),
             Scope:New("UIStroke", {
                 Color = Color3.fromRGB(56, 56, 56),
-                Thickness = 1,
+                                Thickness = 1,
             }),
         },
     })
@@ -115,24 +115,27 @@ function CurveEditor:Construct(Scope, Properties)
         Parent = Frame,
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
+        ZIndex = 1,
     })
 
     local PathLayer = Scope:New("Frame", {
         Parent = Frame,
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
+        ZIndex = 2,
     })
 
     local HandleLayer = Scope:New("Frame", {
         Parent = Frame,
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
+        ZIndex = 3,
     })
 
     local PointLayer = Scope:New("Frame", {
         Parent = Frame,
         BackgroundTransparency = 1,
-        Size = UDim2.fromScale(1, 1),
+                Size = UDim2.fromScale(1, 1),
         ZIndex = 40,
     })
 
@@ -143,7 +146,8 @@ function CurveEditor:Construct(Scope, Properties)
         Text = "",
         AutoButtonColor = false,
         Size = UDim2.fromScale(1, 1),
-        ZIndex = 1,
+        -- Keep the catch-all insert target below the point and handle hit targets.
+        ZIndex = 0,
         Active = true,
     })
 
@@ -268,19 +272,25 @@ function CurveEditor:Construct(Scope, Properties)
         return Dot
     end
 
-    local function DrawLine(FromPosition, ToPosition, Color)
+        local function DrawLine(FromPosition, ToPosition, Color)
         local Delta = ToPosition - FromPosition
         local Distance = Delta.Magnitude
         if Distance <= 0 then
             return
         end
 
-        local Steps = math.max(2, math.floor(Distance / 3))
-        for Step = 0, Steps do
-            local Alpha = Step / Steps
-            local Position = FromPosition + Delta * Alpha
-            DrawDot(PathLayer, Position, 3, Color)
-        end
+        -- A single rotated frame is much cheaper than creating a dot for every
+        -- few pixels of every curve segment during a drag.
+        Scope:New("Frame", {
+            Parent = PathLayer,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromOffset((FromPosition.X + ToPosition.X) * 0.5, (FromPosition.Y + ToPosition.Y) * 0.5),
+            Size = UDim2.fromOffset(Distance, 2),
+            Rotation = math.deg(math.atan2(Delta.Y, Delta.X)),
+            BackgroundColor3 = Color,
+            BorderSizePixel = 0,
+            ZIndex = PathLayer.ZIndex,
+        })
     end
 
     local function ClearRenderLayers()
@@ -534,13 +544,18 @@ function CurveEditor:Construct(Scope, Properties)
                 return
             end
 
-            local Width, Height = GetGraphSize()
+                        local Width, Height = GetGraphSize()
             local Delta = MouseLocation - DragStartMouse
-            Point.Time = Clamp01(DragStartTime + (Delta.X / math.max(1, Width)))
+            if Index == 1 then
+                Point.Time = 0
+            elseif Index == #NewPoints then
+                Point.Time = 1
+            else
+                Point.Time = Clamp01(DragStartTime + (Delta.X / math.max(1, Width)))
+            end
             Point.Value = Clamp01(DragStartValue - (Delta.Y / math.max(1, Height)))
-            SortPoints(NewPoints)
+                        SortPoints(NewPoints)
             Properties.Points.Value = NewPoints
-            RenderVisuals()
             return
         end
 
@@ -553,19 +568,18 @@ function CurveEditor:Construct(Scope, Properties)
 
             local Width, Height = GetGraphSize()
             local Delta = MouseLocation - DragStartMouse
-            local DeltaTime = Delta.X / math.max(1, Width)
+                        local DeltaTime = Delta.X / math.max(1, Width)
             local DeltaValue = -(Delta.Y / math.max(1, Height))
 
             if HandleData.Kind == "Out" then
-                Point.OutHandleX = math.max(0, DragStartHandleX + DeltaTime)
+                Point.OutHandleX = DragStartHandleX + DeltaTime
                 Point.OutHandleY = DragStartHandleY + DeltaValue
             else
-                Point.InHandleX = math.min(0, DragStartHandleX + DeltaTime)
+                Point.InHandleX = DragStartHandleX + DeltaTime
                 Point.InHandleY = DragStartHandleY + DeltaValue
             end
 
-            Properties.Points.Value = NewPoints
-            RenderVisuals()
+                        Properties.Points.Value = NewPoints
         end
     end, StopDrag)
 

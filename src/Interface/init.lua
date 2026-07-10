@@ -2,6 +2,7 @@ local Interface = {}
 
 local Selection = game:GetService("Selection")
 local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
 
 local Bin = script.Parent
 local Objects = Bin:FindFirstChild("Objects")
@@ -324,21 +325,101 @@ function Interface:Init() : DockWidgetPluginGui
     local MathPropertyText = Scope:Value("Size")
     local MathAmountValue = Scope:Value(3)
     local CurvePropertyText = Scope:Value("")
+    local CurveMinRangeText = Scope:Value("0")
     local CurveMaxRangeText = Scope:Value("10")
     local CurvePoints = Scope:Value({
         {
-            Time = 0,
-            Value = 0,
-            InHandle = 0,
-            OutHandle = 0.2,
+                        Time = 0,
+            Value = 0.5,
+            InHandleX = 0,
+            InHandleY = 0,
+            OutHandleX = 0,
+            OutHandleY = 0,
         },
         {
             Time = 1,
-            Value = 1,
-            InHandle = -0.2,
-            OutHandle = 0,
+            Value = 0.5,
+            InHandleX = 0,
+            InHandleY = 0,
+            OutHandleX = 0,
+            OutHandleY = 0,
         },
     })
+    local function CurveAttributeName(Property)
+        return "EffectDesignerCurve_" .. Property
+    end
+
+        local function CurveRangeAttributeName(Property, Suffix)
+            return CurveAttributeName(Property) .. "_" .. Suffix
+        end
+
+    local function ResetCurveState()
+        CurvePoints.Value = {
+            {
+                Time = 0,
+                Value = 0.5,
+                InHandleX = 0,
+                InHandleY = 0,
+                OutHandleX = 0,
+                OutHandleY = 0,
+            },
+            {
+                Time = 1,
+                Value = 0.5,
+                InHandleX = 0,
+                InHandleY = 0,
+                OutHandleX = 0,
+                OutHandleY = 0,
+            },
+        }
+        CurveMinRangeText.Value = "0"
+        CurveMaxRangeText.Value = "10"
+    end
+
+    local function ReadCurveState()
+        local Property = CurvePropertyText.Value
+        local Instance = States.CurrentlySelected.Value[1]
+        if not Property or Property == "" or not Instance then
+            ResetCurveState()
+            return
+        end
+
+        local Points
+                local MinRange
+        local MaxRange
+        local EncodedPoints = Instance:GetAttribute(CurveAttributeName(Property))
+        local EncodedMinRange = Instance:GetAttribute(CurveRangeAttributeName(Property, "MinRange"))
+        local EncodedMaxRange = Instance:GetAttribute(CurveRangeAttributeName(Property, "MaxRange"))
+
+        if typeof(EncodedPoints) == "string" then
+            local Success, Decoded = pcall(function()
+                return HttpService:JSONDecode(EncodedPoints)
+            end)
+            if Success and typeof(Decoded) == "table" and #Decoded >= 2 then
+                Points = Decoded
+                MinRange = tonumber(EncodedMinRange)
+                MaxRange = tonumber(EncodedMaxRange)
+            end
+        end
+
+        if not Points then
+            local Success, Value = pcall(function()
+                return Instance[Property]
+            end)
+            if Success and typeof(Value) == "NumberSequence" then
+                Points, MinRange, MaxRange = EffectOps.ReadCurvePointsFromNumberSequence(Value)
+            end
+        end
+
+                if Points and #Points >= 2 then
+            CurvePoints.Value = Points
+            CurveMinRangeText.Value = tostring(MinRange or 0)
+            CurveMaxRangeText.Value = tostring(MaxRange or 1)
+        else
+            ResetCurveState()
+        end
+    end
+
     local RecolorValue = Scope:Value(Color3.fromRGB(255, 255, 255))
     local PreviewPathsEnabled = Scope:Value(false)
     local InjectVfxApiEnabled = Scope:Value(false)
@@ -922,10 +1003,13 @@ function Interface:Init() : DockWidgetPluginGui
         local NewCurveOptions = CurveOptions.Value
         if #NewCurveOptions > 0 and not table.find(NewCurveOptions, CurvePropertyText.Value) then
             CurvePropertyText.Value = NewCurveOptions[1]
-        elseif #NewCurveOptions == 0 then
+                elseif #NewCurveOptions == 0 then
             CurvePropertyText.Value = ""
         end
+
+        ReadCurveState()
     end))
+    Scope:AddObject(Seam.OnChanged(CurvePropertyText, ReadCurveState))
 
     RefreshDynamicOptions()
 
@@ -1069,11 +1153,23 @@ function Interface:Init() : DockWidgetPluginGui
         Active = States.IsEmittable,
     })
 
-    local CurveRangeRow = CreateRow(Scope, 4)
-    CreateLabel(Scope, CurveRangeRow, "Max Range")
+        local CurveMinRangeRow = CreateRow(Scope, 4)
+    CreateLabel(Scope, CurveMinRangeRow, "Range Min")
     CreateBoundTextBox(
         Scope,
-        CurveRangeRow,
+        CurveMinRangeRow,
+        CurveMinRangeText,
+        States.IsEmittable,
+        "0",
+        UDim2.fromScale(0.35, 0),
+        UDim2.fromScale(0.65, 1)
+    )
+
+    local CurveMaxRangeRow = CreateRow(Scope, 5)
+    CreateLabel(Scope, CurveMaxRangeRow, "Range Max")
+    CreateBoundTextBox(
+        Scope,
+        CurveMaxRangeRow,
         CurveMaxRangeText,
         States.IsEmittable,
         "10",
@@ -1081,23 +1177,28 @@ function Interface:Init() : DockWidgetPluginGui
         UDim2.fromScale(0.65, 1)
     )
 
-    local CurveApplyButton = CreateActionButton(Scope, 5, "Apply Curve", States.IsEmittable, function()
+    local CurveApplyButton = CreateActionButton(Scope, 6, "Apply Curve", States.IsEmittable, function()
         local SelectedProperty = CurvePropertyText.Value
+        local MinRange = tonumber(CurveMinRangeText.Value)
         local MaxRange = tonumber(CurveMaxRangeText.Value)
 
         if not SelectedProperty or SelectedProperty == "" then
             return
         end
 
-        if not MaxRange then
+                if not MinRange or not MaxRange or MinRange > MaxRange then
             return
         end
 
-        local NewSequence = EffectOps.BuildNumberSequenceFromCurve(CurvePoints.Value, MaxRange)
+        local NewSequence = EffectOps.BuildNumberSequenceFromCurve(CurvePoints.Value, MinRange, MaxRange)
 
+                local EncodedPoints = HttpService:JSONEncode(CurvePoints.Value)
         for _, Instance in States.CurrentlySelected.Value do
             pcall(function()
                 Instance[SelectedProperty] = NewSequence
+                Instance:SetAttribute(CurveAttributeName(SelectedProperty), EncodedPoints)
+                Instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MinRange"), MinRange)
+                Instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MaxRange"), MaxRange)
             end)
         end
     end)
@@ -1271,7 +1372,8 @@ function Interface:Init() : DockWidgetPluginGui
         [Seam.Children] = {
             CurvePropertyDropdown,
             CurveEditorWidget,
-            CurveRangeRow,
+                        CurveMinRangeRow,
+            CurveMaxRangeRow,
             CurveApplyButton,
         },
     })
