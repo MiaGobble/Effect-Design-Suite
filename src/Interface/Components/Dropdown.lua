@@ -18,7 +18,14 @@ local COLOR_TEXT_DISABLED = Color3.fromRGB(163, 163, 163)
 local COLOR_STROKE = Color3.fromRGB(40, 40, 40)
 local COLOR_STROKE_HOVER = Color3.fromRGB(60, 60, 60)
 
-local function ReadOptions(Source)
+local function ReadOptions(Source, Use)
+    if Use and typeof(Source) == "table" and Source.Value ~= nil then
+        local Value = Use(Source)
+        if typeof(Value) == "table" then
+            return Value
+        end
+    end
+
     if typeof(Source) == "table" and Source.Value ~= nil and typeof(Source.Value) == "table" then
         return Source.Value
     end
@@ -30,7 +37,11 @@ local function ReadOptions(Source)
     return {}
 end
 
-local function ReadActiveValue(ActiveProperty)
+local function ReadActiveValue(ActiveProperty, Use)
+    if Use and typeof(ActiveProperty) == "table" and ActiveProperty.Value ~= nil then
+        return Use(ActiveProperty) == true
+    end
+
     if typeof(ActiveProperty) == "boolean" then
         return ActiveProperty
     end
@@ -55,8 +66,8 @@ end
 function Dropdown:Construct(Scope, Properties)
     local OptionsSource = Properties.Options or {}
 
-    local function IsEnabled()
-        return ReadActiveValue(Properties.Active) and #ReadOptions(OptionsSource) > 0
+        local function IsEnabled(Use)
+        return ReadActiveValue(Properties.Active, Use) and #ReadOptions(OptionsSource, Use) > 0
     end
 
     local Root = Scope:New("Frame", {
@@ -87,8 +98,8 @@ function Dropdown:Construct(Scope, Properties)
         Parent = Root,
         Position = UDim2.fromOffset(0, 0),
         Size = UDim2.new(1, 0, 0, CLOSED_HEIGHT),
-        BackgroundColor3 = Scope:Computed(function(Use)
-            if not IsEnabled() then
+                BackgroundColor3 = Scope:Computed(function(Use)
+            if not IsEnabled(Use) then
                 return COLOR_BUTTON_DISABLED
             end
 
@@ -125,8 +136,8 @@ function Dropdown:Construct(Scope, Properties)
         BackgroundTransparency = 1,
         FontFace = Font.fromEnum(Enum.Font.BuilderSans),
         TextSize = 14,
-        TextColor3 = Scope:Computed(function()
-            if IsEnabled() then
+                TextColor3 = Scope:Computed(function(Use)
+            if IsEnabled(Use) then
                 return COLOR_TEXT
             end
 
@@ -151,8 +162,8 @@ function Dropdown:Construct(Scope, Properties)
         BackgroundTransparency = 1,
         FontFace = Font.fromEnum(Enum.Font.BuilderSans),
         TextSize = 15,
-        TextColor3 = Scope:Computed(function()
-            if IsEnabled() then
+                TextColor3 = Scope:Computed(function(Use)
+            if IsEnabled(Use) then
                 return COLOR_TEXT
             end
 
