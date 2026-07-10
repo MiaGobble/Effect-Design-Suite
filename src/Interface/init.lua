@@ -786,7 +786,10 @@ function Interface:Init() : DockWidgetPluginGui
 
         local NewEmitter = Instance.new("ParticleEmitter")
         NewEmitter.Name = string.format("%sPreset", Asset.Type)
-        NewEmitter.Enabled = false
+        NewEmitter.Size = NumberSequence.new(1)
+        NewEmitter.Rate = 1
+        NewEmitter.Lifetime = NumberSequence.new(2)
+        NewEmitter.Enabled = true
         ApplyAssetToTextureObject(Asset, NewEmitter)
 
         local Success = pcall(function()
