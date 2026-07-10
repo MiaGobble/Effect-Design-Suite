@@ -788,7 +788,7 @@ function Interface:Init() : DockWidgetPluginGui
         NewEmitter.Name = string.format("%sPreset", Asset.Type)
         NewEmitter.Size = NumberSequence.new(1)
         NewEmitter.Rate = 1
-        NewEmitter.Lifetime = NumberSequence.new(2)
+        NewEmitter.Lifetime = NumberRange.new(2, 2)
         NewEmitter.Enabled = true
         ApplyAssetToTextureObject(Asset, NewEmitter)
 
