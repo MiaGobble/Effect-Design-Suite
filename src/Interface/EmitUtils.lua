@@ -17,6 +17,10 @@ local Widget = nil
 local PathPreviewFolder = nil
 local PathPreviewConnections = {}
 local PathPreviewHeartbeatConnection = nil
+local PathPreviewHeartbeatElapsed = 0
+local LastPathPreviewSignature = nil
+local PathPreviewInstanceIds = setmetatable({}, {__mode = "k"})
+local NextPathPreviewInstanceId = 0
 
 local function DisconnectPathPreviewConnections()
     for _, Connection in PathPreviewConnections do
@@ -137,6 +141,170 @@ local function DrawControlSegment(FromPosition : Vector3, ToPosition : Vector3, 
     Part.Parent = Parent
 end
 
+local function DrawParticlePathSegment(FromPosition : Vector3, ToPosition : Vector3, Parent : Instance)
+    local Delta = ToPosition - FromPosition
+    if Delta.Magnitude <= 0.001 then
+        return
+    end
+
+    local Part = Instance.new("Part")
+    Part.Name = "ParticlePathSegment"
+    Part.Anchored = true
+    Part.CanCollide = false
+    Part.CanTouch = false
+    Part.CanQuery = false
+    Part.Material = Enum.Material.Neon
+    Part.Color = Color3.fromRGB(185, 105, 255)
+    Part.Transparency = 0.15
+    Part.Size = Vector3.new(0.04, 0.04, Delta.Magnitude)
+    Part.CFrame = CFrame.lookAt(FromPosition, ToPosition) * CFrame.new(0, 0, -Delta.Magnitude * 0.5)
+    Part.Parent = Parent
+end
+
+local function GetEmitterWorldCFrame(Emitter : ParticleEmitter)
+    local Parent = Emitter.Parent
+    if Parent and Parent:IsA("Attachment") then
+        return Parent.WorldCFrame
+    end
+    if Parent and Parent:IsA("BasePart") then
+        return Parent.CFrame
+    end
+    return nil
+end
+
+local function GetLocalEmissionDirection(Direction : Enum.NormalId)
+    if Direction == Enum.NormalId.Top then
+        return Vector3.new(0, 1, 0)
+    elseif Direction == Enum.NormalId.Bottom then
+        return Vector3.new(0, -1, 0)
+    elseif Direction == Enum.NormalId.Right then
+        return Vector3.new(1, 0, 0)
+    elseif Direction == Enum.NormalId.Left then
+        return Vector3.new(-1, 0, 0)
+    elseif Direction == Enum.NormalId.Back then
+        return Vector3.new(0, 0, 1)
+    end
+    return Vector3.new(0, 0, -1)
+end
+
+local function GetSpreadAxes(Direction : Enum.NormalId)
+    if Direction == Enum.NormalId.Top or Direction == Enum.NormalId.Bottom then
+        return Vector3.new(1, 0, 0), Vector3.new(0, 0, 1)
+    elseif Direction == Enum.NormalId.Front or Direction == Enum.NormalId.Back then
+        return Vector3.new(1, 0, 0), Vector3.new(0, 1, 0)
+    end
+    return Vector3.new(0, 0, 1), Vector3.new(0, 1, 0)
+end
+
+local function ApplySpread(Direction : Vector3, FirstTargetAxis : Vector3, FirstAngle : number, SecondTargetAxis : Vector3, SecondAngle : number)
+    local FirstRotationAxis = Direction:Cross(FirstTargetAxis).Unit
+    local SecondRotationAxis = Direction:Cross(SecondTargetAxis).Unit
+    local FirstRotation = CFrame.fromAxisAngle(FirstRotationAxis, FirstAngle)
+    local SecondRotation = CFrame.fromAxisAngle(SecondRotationAxis, SecondAngle)
+    return SecondRotation:VectorToWorldSpace(FirstRotation:VectorToWorldSpace(Direction)).Unit
+end
+
+local function StepParticle(Position : Vector3, Velocity : Vector3, Acceleration : Vector3, Drag : number, DeltaTime : number)
+    -- ParticleEmitter.Drag is a half-life rate, so Roblox scales velocity by
+    -- 2^(-Drag * dt) after applying acceleration.
+    local NewVelocity = (Velocity + Acceleration * DeltaTime) * (2 ^ (-Drag * DeltaTime))
+    local NewPosition = Position + (Velocity + NewVelocity) * (0.5 * DeltaTime)
+    return NewPosition, NewVelocity
+end
+
+local function BuildParticleEmitterPathPreview(Emitter : ParticleEmitter, Parent : Instance)
+    local EmitterCFrame = GetEmitterWorldCFrame(Emitter)
+    if not EmitterCFrame then
+        return
+    end
+
+    local LocalDirection = GetLocalEmissionDirection(Emitter.EmissionDirection)
+    local Spread = Emitter.SpreadAngle
+    local FirstAxis, SecondAxis = GetSpreadAxes(Emitter.EmissionDirection)
+    local FirstAngle = math.rad(math.min(Spread.X, 180))
+    local SecondAngle = math.rad(math.min(Spread.Y, 180))
+    local LocalDirections = {}
+    local SeenDirections = {}
+    local function AddDirection(Direction)
+        local Key = string.format("%.4f,%.4f,%.4f", Direction.X, Direction.Y, Direction.Z)
+        if not SeenDirections[Key] then
+            SeenDirections[Key] = true
+            table.insert(LocalDirections, Direction)
+        end
+    end
+
+    AddDirection(LocalDirection)
+    if FirstAngle > 0.0001 then
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, FirstAngle, SecondAxis, 0))
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, -FirstAngle, SecondAxis, 0))
+    end
+    if SecondAngle > 0.0001 then
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, 0, SecondAxis, SecondAngle))
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, 0, SecondAxis, -SecondAngle))
+    end
+    if FirstAngle > 0.0001 and SecondAngle > 0.0001 then
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, FirstAngle, SecondAxis, SecondAngle))
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, FirstAngle, SecondAxis, -SecondAngle))
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, -FirstAngle, SecondAxis, SecondAngle))
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, -FirstAngle, SecondAxis, -SecondAngle))
+    end
+    if Spread.X >= 180 then
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, math.pi * 0.5, SecondAxis, 0))
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, -math.pi * 0.5, SecondAxis, 0))
+    end
+    if Spread.Y >= 180 then
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, 0, SecondAxis, math.pi * 0.5))
+        AddDirection(ApplySpread(LocalDirection, FirstAxis, 0, SecondAxis, -math.pi * 0.5))
+    end
+
+    local Origin = EmitterCFrame.Position
+    local MinimumSpeed = Emitter.Speed.Min
+    local MaximumSpeed = Emitter.Speed.Max
+    local RepresentativeSpeed = if MinimumSpeed <= 0 and MaximumSpeed >= 0
+        then (if math.abs(MinimumSpeed) > math.abs(MaximumSpeed) then MinimumSpeed else MaximumSpeed)
+        else (MinimumSpeed + MaximumSpeed) * 0.5
+    local Duration = math.max(Emitter.Lifetime.Max, 0.01)
+    local Steps = 24
+    local DeltaTime = Duration / Steps
+    local InheritedVelocity = Vector3.zero
+    local EmitterParent = Emitter.Parent
+    local SourcePart = if EmitterParent and EmitterParent:IsA("BasePart")
+        then EmitterParent
+        elseif EmitterParent
+            and EmitterParent:IsA("Attachment")
+            and EmitterParent.Parent
+            and EmitterParent.Parent:IsA("BasePart")
+        then EmitterParent.Parent
+        else nil
+    if SourcePart then
+        local SourceMotionMultiplier = Emitter.VelocityInheritance + (if Emitter.LockedToPart then 1 else 0)
+        InheritedVelocity = SourcePart.AssemblyLinearVelocity * SourceMotionMultiplier
+    end
+
+    DrawPointMarker(Origin, Parent, "ParticleEmitterOrigin", Color3.fromRGB(205, 135, 255))
+
+    local function DrawTrajectory(Direction, Speed)
+        local Position = Origin
+        local Velocity = EmitterCFrame:VectorToWorldSpace(Direction).Unit * Speed + InheritedVelocity
+
+        for _ = 1, Steps do
+            local NextPosition, NextVelocity = StepParticle(Position, Velocity, Emitter.Acceleration, Emitter.Drag, DeltaTime)
+            DrawParticlePathSegment(Position, NextPosition, Parent)
+            Position = NextPosition
+            Velocity = NextVelocity
+        end
+    end
+
+    for _, Direction in LocalDirections do
+        DrawTrajectory(Direction, RepresentativeSpeed)
+    end
+
+    if math.abs(MaximumSpeed - MinimumSpeed) > 0.001 then
+        DrawTrajectory(LocalDirection, MinimumSpeed)
+        DrawTrajectory(LocalDirection, MaximumSpeed)
+    end
+end
+
 local function EvaluateBezier(ControlPoints : {Vector3}, T : number)
     local Working = table.clone(ControlPoints)
 
@@ -219,10 +387,80 @@ local function BuildIndicatorPathPreview(AnimationIndicator : StringValue, Paren
     end
 end
 
+local function GetPathPreviewInstanceId(Instance : Instance)
+    local ExistingId = PathPreviewInstanceIds[Instance]
+    if ExistingId then
+        return ExistingId
+    end
+
+    NextPathPreviewInstanceId += 1
+    PathPreviewInstanceIds[Instance] = NextPathPreviewInstanceId
+    return NextPathPreviewInstanceId
+end
+
+local function GetIndicatorPathSignature(Indicator : StringValue)
+    local Values = {
+        "Indicator",
+        tostring(GetPathPreviewInstanceId(Indicator)),
+        Indicator.Value,
+    }
+    local Host = Indicator.Parent
+    if not Host then
+        return table.concat(Values, "|")
+    end
+
+    local Attachments = {}
+    for _, Child in Host:GetChildren() do
+        if Child:IsA("Attachment")
+            and (Child.Name == "Origin" or Child.Name == "Target" or Child.Name:match("^Midpoint%d+$")) then
+            table.insert(Attachments, Child)
+        end
+    end
+    table.sort(Attachments, function(Left, Right)
+        return Left.Name < Right.Name
+    end)
+
+    for _, Attachment in Attachments do
+        table.insert(Values, Attachment.Name)
+        table.insert(Values, tostring(Attachment.WorldPosition))
+    end
+    return table.concat(Values, "|")
+end
+
+local function GetParticlePathSignature(Emitter : ParticleEmitter)
+    local EmitterCFrame = GetEmitterWorldCFrame(Emitter)
+    local EmitterParent = Emitter.Parent
+    local SourcePart = if EmitterParent and EmitterParent:IsA("BasePart")
+        then EmitterParent
+        elseif EmitterParent
+            and EmitterParent:IsA("Attachment")
+            and EmitterParent.Parent
+            and EmitterParent.Parent:IsA("BasePart")
+        then EmitterParent.Parent
+        else nil
+
+    return table.concat({
+        "ParticleEmitter",
+        tostring(GetPathPreviewInstanceId(Emitter)),
+        tostring(EmitterCFrame),
+        tostring(Emitter.EmissionDirection.Value),
+        tostring(Emitter.Speed),
+        tostring(Emitter.Lifetime),
+        tostring(Emitter.SpreadAngle),
+        tostring(Emitter.Acceleration),
+        tostring(Emitter.Drag),
+        tostring(Emitter.VelocityInheritance),
+        tostring(Emitter.LockedToPart),
+        tostring(Emitter.Shape.Value),
+        tostring(Emitter.ShapeStyle.Value),
+        tostring(Emitter.ShapeInOut.Value),
+        tostring(Emitter.ShapePartial),
+        tostring(SourcePart and SourcePart.AssemblyLinearVelocity or Vector3.zero),
+    }, "|")
+end
+
 local function RefreshPathPreview()
     local Folder = GetPreviewFolder()
-    ClearPathPreview()
-
     local Candidates = {}
 
     for _, Instance in States.RawSelection.Value do
@@ -234,17 +472,58 @@ local function RefreshPathPreview()
     end
 
     local Seen = {}
+    local Entries = {}
 
     for _, Candidate in Candidates do
-        if Candidate:IsA("StringValue") and Candidate.Name == "AnimationIndicator" and not Seen[Candidate] then
+        if Candidate:IsA("ParticleEmitter") and not Seen[Candidate] then
             Seen[Candidate] = true
-            BuildIndicatorPathPreview(Candidate, Folder)
+            table.insert(Entries, {
+                Instance = Candidate,
+                Kind = "ParticleEmitter",
+                Signature = GetParticlePathSignature(Candidate),
+            })
+        elseif Candidate:IsA("StringValue") and Candidate.Name == "AnimationIndicator" and not Seen[Candidate] then
+            Seen[Candidate] = true
+            table.insert(Entries, {
+                Instance = Candidate,
+                Kind = "Indicator",
+                Signature = GetIndicatorPathSignature(Candidate),
+            })
         else
             local Indicator = Candidate:FindFirstChild("AnimationIndicator")
             if Indicator and Indicator:IsA("StringValue") and not Seen[Indicator] then
                 Seen[Indicator] = true
-                BuildIndicatorPathPreview(Indicator, Folder)
+                table.insert(Entries, {
+                    Instance = Indicator,
+                    Kind = "Indicator",
+                    Signature = GetIndicatorPathSignature(Indicator),
+                })
             end
+        end
+    end
+
+    table.sort(Entries, function(Left, Right)
+        return GetPathPreviewInstanceId(Left.Instance) < GetPathPreviewInstanceId(Right.Instance)
+    end)
+
+    local Signatures = {}
+    for _, Entry in Entries do
+        table.insert(Signatures, Entry.Signature)
+    end
+    local CombinedSignature = table.concat(Signatures, "\n")
+
+    if CombinedSignature == LastPathPreviewSignature
+        and (#Entries == 0 or #Folder:GetChildren() > 0) then
+        return
+    end
+
+    LastPathPreviewSignature = CombinedSignature
+    ClearPathPreview()
+    for _, Entry in Entries do
+        if Entry.Kind == "ParticleEmitter" then
+            BuildParticleEmitterPathPreview(Entry.Instance, Folder)
+        else
+            BuildIndicatorPathPreview(Entry.Instance, Folder)
         end
     end
 end
@@ -401,9 +680,18 @@ function EmitUtils:SetPathPreviewEnabled(Enabled : boolean)
     end
 
     DisconnectPathPreviewConnections()
+    PathPreviewHeartbeatElapsed = 0
     table.insert(PathPreviewConnections, Seam.OnChanged(States.CurrentlySelected, RefreshPathPreview))
     table.insert(PathPreviewConnections, Seam.OnChanged(States.RawSelection, RefreshPathPreview))
-    PathPreviewHeartbeatConnection = RunService.Heartbeat:Connect(RefreshPathPreview)
+    PathPreviewHeartbeatConnection = RunService.Heartbeat:Connect(function(DeltaTime)
+        PathPreviewHeartbeatElapsed += DeltaTime
+        if PathPreviewHeartbeatElapsed < 0.1 then
+            return
+        end
+
+        PathPreviewHeartbeatElapsed = 0
+        RefreshPathPreview()
+    end)
     RefreshPathPreview()
 end
 
