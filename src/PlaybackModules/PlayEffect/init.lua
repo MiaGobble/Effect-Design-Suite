@@ -219,9 +219,8 @@ local function AnimateBezier(ParentAttachment : Attachment)
 end
 
 -- Actually plays the effect
-local function PlayEffect(This : Instance, Bin : Instance) : number?
+local function PlayEffect(This : Instance, Bin : Instance, WidgetParentPayload : {any}) : number?
     local TotalDuration = nil
-    local WidgetParentPayload = nil
 
     if This:IsA("ModuleScript") then
         local Duplicate = This:Clone()
@@ -318,6 +317,10 @@ local function PlayEffect(This : Instance, Bin : Instance) : number?
         else
             TotalDuration = (This.TimeLength / This.PlaybackSpeed) + (This:GetAttribute("EmitDelay") or 0)
         end
+
+        if WidgetParentPayload then
+            table.insert(WidgetParentPayload, {NewSound, TotalDuration})
+        end
     elseif This:IsA("Trail") then
         This.Enabled = false
 
@@ -338,7 +341,7 @@ local function PlayEffect(This : Instance, Bin : Instance) : number?
         end
     end
 
-    return TotalDuration, WidgetParentPayload
+    return TotalDuration
 end
 
 return function(Bin : Instance, IgnoreAllDescendants : boolean?) : number
@@ -350,21 +353,18 @@ return function(Bin : Instance, IgnoreAllDescendants : boolean?) : number
 
     ActiveTasks[Bin] = {}
 
-    local MaxTime, BinWidgetParentPayload = PlayEffect(Bin, Bin)
-    local WidgetParentPayload = {BinWidgetParentPayload}
+    local WidgetParentPayload = {}
+    local Descendants = Bin:GetDescendants()
+    local MaxTime = PlayEffect(Bin, Bin, WidgetParentPayload)
     MaxTime = MaxTime or 0
 
     if not IgnoreAllDescendants then
-        for _, This : Instance in Bin:GetDescendants() do
+        for _, This : Instance in Descendants do
             if not This:IsDescendantOf(workspace) then
                 continue
             end
     
-            local Duration, ThisWidgetParentPayload = PlayEffect(This, Bin)
-    
-            if ThisWidgetParentPayload then
-                table.insert(WidgetParentPayload, ThisWidgetParentPayload)
-            end
+            local Duration = PlayEffect(This, Bin, WidgetParentPayload)
     
             Duration = Duration or 0
             MaxTime = math.max(MaxTime, Duration)

@@ -263,7 +263,7 @@ function Interface:Init() : DockWidgetPluginGui
         WidgetId = "EffectDesignerSuite",
         Title = "Effect Designer Suite",
         InitialDockState = Enum.InitialDockState.Left,
-        InitialEnabled = false,
+        InitialEnabled = true,
         OverridePreviousState = false,
         DefaultWidth = 320,
         DefaultHeight = 480,
@@ -1309,7 +1309,6 @@ function Interface:Init() : DockWidgetPluginGui
         LayoutOrder = 1,
         Text = "Core Properties",
         Active = true,
-        DefaultOpen = true,
 
         [Seam.Children] = {
             CoreEmitCountRow,
@@ -1322,7 +1321,6 @@ function Interface:Init() : DockWidgetPluginGui
         LayoutOrder = 2,
         Text = "Emit Actions",
         Active = true,
-        DefaultOpen = true,
 
         [Seam.Children] = {
             EmitButton,
