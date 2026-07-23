@@ -1,6 +1,7 @@
 -- Constants
 local ACCEPTABLE_INSTANCE_TYPES = {
     "ParticleEmitter",
+    "Beam",
     "Sound",
     "ModuleScript",
     "StringValue",

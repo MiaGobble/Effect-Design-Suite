@@ -21,6 +21,7 @@ local Dropdown = require(Components:FindFirstChild("Dropdown"))
 local SliderInput = require(Components:FindFirstChild("SliderInput"))
 local CurveEditor = require(Components:FindFirstChild("CurveEditor"))
 local ColorPicker = require(Components:FindFirstChild("ColorPicker"))
+local ColorSequenceEditor = require(Components:FindFirstChild("ColorSequenceEditor"))
 
 local InterfaceScope = nil
 
@@ -283,6 +284,22 @@ function Interface:Init() : DockWidgetPluginGui
         return #Use(States.RawSelection) > 0
     end)
 
+    local function HasColorSequence(Instance)
+        local Success, Value = pcall(function()
+            return Instance.Color
+        end)
+        return Success and typeof(Value) == "ColorSequence"
+    end
+
+    local HasColorSequenceSelection = Scope:Computed(function(Use)
+        for _, Instance in Use(States.CurrentlySelected) do
+            if HasColorSequence(Instance) then
+                return true
+            end
+        end
+        return false
+    end)
+
     local HasReplaceTargets = Scope:Computed(function(Use)
         local RawSelection = Use(States.RawSelection)
         local CurrentSelection = Use(States.CurrentlySelected)
@@ -420,7 +437,76 @@ function Interface:Init() : DockWidgetPluginGui
         end
     end
 
-    local RecolorValue = Scope:Value(Color3.fromRGB(255, 255, 255))
+    local COLOR_SEQUENCE_ATTRIBUTE = "EffectDesignerOklabColorSequence"
+    local function DefaultColorSequencePoints()
+        return {
+            EffectOps.Color3ToOklabPoint(Color3.new(1, 1, 1), 0),
+            EffectOps.Color3ToOklabPoint(Color3.new(1, 1, 1), 1),
+        }
+    end
+
+    local ColorSequencePoints = Scope:Value(DefaultColorSequencePoints())
+    local ActiveColorPointIndex = Scope:Value(nil)
+    local ColorPickerValue = Scope:Value(Color3.new(1, 1, 1))
+    local IsSyncingColorPicker = false
+    local ColorPickerWidget = nil
+
+    local function ReadColorSequenceState()
+        local SourceInstance = nil
+        for _, Instance in States.CurrentlySelected.Value do
+            if HasColorSequence(Instance) then
+                SourceInstance = Instance
+                break
+            end
+        end
+
+        ActiveColorPointIndex.Value = nil
+        if ColorPickerWidget then
+            ColorPickerWidget.Enabled = false
+        end
+        if not SourceInstance then
+            ColorSequencePoints.Value = DefaultColorSequencePoints()
+            return
+        end
+
+        local Points = nil
+        local EncodedPoints = SourceInstance:GetAttribute(COLOR_SEQUENCE_ATTRIBUTE)
+        if typeof(EncodedPoints) == "string" then
+            local Success, Decoded = pcall(function()
+                return HttpService:JSONDecode(EncodedPoints)
+            end)
+
+            if Success and typeof(Decoded) == "table" and #Decoded >= 2 and #Decoded <= 20 then
+                local Valid = true
+                for _, Point in Decoded do
+                    if typeof(Point) ~= "table"
+                        or typeof(Point.Time) ~= "number"
+                        or typeof(Point.L) ~= "number"
+                        or typeof(Point.A) ~= "number"
+                        or typeof(Point.B) ~= "number" then
+                        Valid = false
+                        break
+                    end
+                end
+
+                if Valid then
+                    table.sort(Decoded, function(Left, Right)
+                        return Left.Time < Right.Time
+                    end)
+                    if Decoded[1].Time == 0 and Decoded[#Decoded].Time == 1 then
+                        Points = Decoded
+                    end
+                end
+            end
+        end
+
+        if not Points then
+            Points = EffectOps.ReadOklabPointsFromColorSequence(SourceInstance.Color)
+        end
+
+        ColorSequencePoints.Value = Points
+    end
+
     local PreviewPathsEnabled = Scope:Value(false)
     local InjectVfxApiEnabled = Scope:Value(false)
     local CopiedValue = Scope:Value(nil)
@@ -437,6 +523,81 @@ function Interface:Init() : DockWidgetPluginGui
     Scope:New(Jian.Background, {
         Parent = MainWidget,
     })
+
+    ColorPickerWidget = Scope:New(Jian.Widget, {
+        WidgetId = "EffectDesignerSuiteColorPicker",
+        Title = "Color Picker",
+        InitialDockState = Enum.InitialDockState.Float,
+        InitialEnabled = false,
+        OverridePreviousState = false,
+        DefaultWidth = 260,
+        DefaultHeight = 260,
+        MinimumWidth = 220,
+        MinimumHeight = 245,
+    }) :: DockWidgetPluginGui
+    ColorPickerWidget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    Scope:New(Jian.Background, {
+        Parent = ColorPickerWidget,
+    })
+
+    local ColorPickerRoot = Scope:New("Frame", {
+        Parent = ColorPickerWidget,
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+    })
+
+    Scope:New(Jian.Text, {
+        Parent = ColorPickerRoot,
+        Position = UDim2.fromOffset(12, 8),
+        Size = UDim2.new(1, -24, 0, 20),
+        AutomaticSize = Enum.AutomaticSize.None,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Text = Scope:Computed(function(Use)
+            local Index = Use(ActiveColorPointIndex)
+            local Points = Use(ColorSequencePoints)
+            local Point = Index and Points[Index] or nil
+            return if Point then string.format("Point at %.3f", Point.Time) else "Select a color point"
+        end),
+        Active = false,
+    })
+
+    Scope:New(ColorPicker, {
+        Parent = ColorPickerRoot,
+        Position = UDim2.fromOffset(12, 34),
+        Size = UDim2.new(1, -24, 0, 198),
+        Value = ColorPickerValue,
+        Active = Scope:Computed(function(Use)
+            return Use(ActiveColorPointIndex) ~= nil
+        end),
+    })
+
+    local function SyncPickerFromPoint(Index)
+        local Point = Index and ColorSequencePoints.Value[Index] or nil
+        if not Point then
+            return
+        end
+
+        IsSyncingColorPicker = true
+        ColorPickerValue.Value = EffectOps.OklabPointToColor3(Point)
+        IsSyncingColorPicker = false
+    end
+
+    Scope:AddObject(Seam.OnChanged(ColorPickerValue, function()
+        if IsSyncingColorPicker then
+            return
+        end
+
+        local Index = ActiveColorPointIndex.Value
+        local ExistingPoint = Index and ColorSequencePoints.Value[Index] or nil
+        if not ExistingPoint then
+            return
+        end
+
+        local UpdatedPoints = table.clone(ColorSequencePoints.Value)
+        UpdatedPoints[Index] = EffectOps.Color3ToOklabPoint(ColorPickerValue.Value, ExistingPoint.Time)
+        ColorSequencePoints.Value = UpdatedPoints
+    end))
 
     local Container = Scope:New(Jian.ScrollingList, {
         Parent = MainWidget,
@@ -1011,10 +1172,12 @@ function Interface:Init() : DockWidgetPluginGui
         end
 
         ReadCurveState()
+        ReadColorSequenceState()
     end))
     Scope:AddObject(Seam.OnChanged(CurvePropertyText, ReadCurveState))
 
     RefreshDynamicOptions()
+    ReadColorSequenceState()
 
     local CopyPropertyDropdown = Scope:New(Dropdown, {
         LayoutOrder = 2,
@@ -1206,22 +1369,33 @@ function Interface:Init() : DockWidgetPluginGui
         end
     end)
 
-    local RecolorPicker = Scope:New(ColorPicker, {
+    local ColorSequenceEditorWidget = Scope:New(ColorSequenceEditor, {
         LayoutOrder = 2,
-        Size = UDim2.new(1, 0, 0, 198),
-        Value = RecolorValue,
-        Active = States.IsEmittable,
+        Size = UDim2.new(1, 0, 0, 76),
+        Points = ColorSequencePoints,
+        ActivePointIndex = ActiveColorPointIndex,
+        Active = HasColorSequenceSelection,
+        OnEditPoint = function(Index)
+            if not Index then
+                ColorPickerWidget.Enabled = false
+                return
+            end
+            SyncPickerFromPoint(Index)
+            ColorPickerWidget.Enabled = true
+        end,
     })
 
-    local RecolorApplyButton = CreateActionButton(Scope, 3, "Apply Recolor", States.IsEmittable, function()
+    local ColorSequenceApplyButton = CreateActionButton(Scope, 3, "Apply Color Sequence", HasColorSequenceSelection, function()
+        local NewSequence = EffectOps.BuildColorSequenceFromOklabPoints(ColorSequencePoints.Value)
+        local EncodedPoints = HttpService:JSONEncode(ColorSequencePoints.Value)
+
         for _, Instance in States.CurrentlySelected.Value do
-            pcall(function()
-                if typeof(Instance.Color) == "ColorSequence" then
-                    Instance.Color = EffectOps.ShiftColorSequenceToTarget(Instance.Color, RecolorValue.Value)
-                elseif typeof(Instance.Color) == "Color3" then
-                    Instance.Color = RecolorValue.Value
-                end
-            end)
+            if HasColorSequence(Instance) then
+                pcall(function()
+                    Instance.Color = NewSequence
+                    Instance:SetAttribute(COLOR_SEQUENCE_ATTRIBUTE, EncodedPoints)
+                end)
+            end
         end
     end)
 
@@ -1381,12 +1555,12 @@ function Interface:Init() : DockWidgetPluginGui
     Scope:New(Jian.ListSection, {
         Parent = Container,
         LayoutOrder = 7,
-        Text = "Recolor",
+        Text = "Color Sequence",
         Active = true,
 
         [Seam.Children] = {
-            RecolorPicker,
-            RecolorApplyButton,
+            ColorSequenceEditorWidget,
+            ColorSequenceApplyButton,
         },
     })
     Scope:New(Jian.ListSection, {

@@ -1,4 +1,134 @@
+local Interface = script.Parent.Parent
+local Bin = Interface.Parent
+local Packages = Bin:FindFirstChild("Packages")
+local Oklab = require(Packages:FindFirstChild("Oklab"))
+
 local EffectOps = {}
+
+local MAXIMUM_COLOR_KEYPOINTS = 20
+
+local function SortColorPoints(Points)
+    local Sorted = table.clone(Points)
+    table.sort(Sorted, function(Left, Right)
+        return Left.Time < Right.Time
+    end)
+    return Sorted
+end
+
+local function PointToOklab(Point)
+    return Vector3.new(Point.L, Point.A, Point.B)
+end
+
+function EffectOps.Color3ToOklabPoint(Color : Color3, Time : number)
+    local Value = Oklab.ToOklab(Color)
+    return {
+        Time = math.clamp(Time, 0, 1),
+        L = Value.X,
+        A = Value.Y,
+        B = Value.Z,
+    }
+end
+
+function EffectOps.OklabPointToColor3(Point)
+    return Oklab.FromOklab(PointToOklab(Point))
+end
+
+function EffectOps.ReadOklabPointsFromColorSequence(Sequence : ColorSequence)
+    local Points = {}
+
+    for _, Keypoint in Sequence.Keypoints do
+        table.insert(Points, EffectOps.Color3ToOklabPoint(Keypoint.Value, Keypoint.Time))
+    end
+
+    return Points
+end
+
+function EffectOps.InterpolateOklabPoints(Points, Time : number)
+    local Sorted = SortColorPoints(Points)
+    local ClampedTime = math.clamp(Time, 0, 1)
+
+    if #Sorted == 0 then
+        return Vector3.new(1, 0, 0)
+    end
+
+    if #Sorted == 1 or ClampedTime <= Sorted[1].Time then
+        return PointToOklab(Sorted[1])
+    end
+
+    for Index = 1, #Sorted - 1 do
+        local Start = Sorted[Index]
+        local Finish = Sorted[Index + 1]
+
+        if ClampedTime <= Finish.Time then
+            local Duration = Finish.Time - Start.Time
+            local Alpha = if Duration <= 0 then 0 else (ClampedTime - Start.Time) / Duration
+            return PointToOklab(Start):Lerp(PointToOklab(Finish), math.clamp(Alpha, 0, 1))
+        end
+    end
+
+    return PointToOklab(Sorted[#Sorted])
+end
+
+function EffectOps.BuildColorSequenceFromOklabPoints(Points)
+    local Sorted = SortColorPoints(Points)
+
+    if #Sorted == 0 then
+        return ColorSequence.new(Color3.new(1, 1, 1))
+    end
+
+    if #Sorted == 1 then
+        local Color = EffectOps.OklabPointToColor3(Sorted[1])
+        return ColorSequence.new(Color)
+    end
+
+    -- Preserve every authored time, then fill the remaining native keypoint budget
+    -- with evenly spaced samples so Roblox's interpolation approximates Oklab.
+    local SampleTimes = {}
+    local SeenTimes = {}
+    local function AddTime(Time)
+        local Clamped = math.clamp(Time, 0, 1)
+        local Key = math.floor(Clamped * 1000000 + 0.5)
+        if not SeenTimes[Key] then
+            SeenTimes[Key] = true
+            table.insert(SampleTimes, Clamped)
+        end
+    end
+
+    for _, Point in Sorted do
+        AddTime(Point.Time)
+    end
+    AddTime(0)
+    AddTime(1)
+
+    while #SampleTimes < MAXIMUM_COLOR_KEYPOINTS do
+        table.sort(SampleTimes)
+
+        local LargestGap = 0
+        local Midpoint = nil
+        for Index = 1, #SampleTimes - 1 do
+            local Gap = SampleTimes[Index + 1] - SampleTimes[Index]
+            if Gap > LargestGap then
+                LargestGap = Gap
+                Midpoint = SampleTimes[Index] + Gap / 2
+            end
+        end
+
+        if not Midpoint or LargestGap <= 0 then
+            break
+        end
+        AddTime(Midpoint)
+    end
+
+    table.sort(SampleTimes)
+
+    local Keypoints = {}
+    for _, SampleTime in SampleTimes do
+        local OklabValue = EffectOps.InterpolateOklabPoints(Sorted, SampleTime)
+        table.insert(Keypoints, ColorSequenceKeypoint.new(SampleTime, Oklab.FromOklab(OklabValue)))
+    end
+
+    return ColorSequence.new(Keypoints)
+end
 
 function EffectOps.ScaleValueByMultiplier(Value, Multiplier : number)
     local ValueType = typeof(Value)
@@ -30,39 +160,6 @@ function EffectOps.ScaleValueByMultiplier(Value, Multiplier : number)
     end
 
     return Value
-end
-
-function EffectOps.ShiftColorSequenceToTarget(Sequence : ColorSequence, TargetColor : Color3)
-    local Keypoints = Sequence.Keypoints
-
-    if #Keypoints == 0 then
-        return Sequence
-    end
-
-    local BaseColor = Keypoints[1].Value
-    local BaseHue, BaseSaturation, BaseValue = BaseColor:ToHSV()
-    local TargetHue, TargetSaturation, TargetValue = TargetColor:ToHSV()
-
-    local HueDelta = TargetHue - BaseHue
-    local SaturationDelta = TargetSaturation - BaseSaturation
-    local ValueDelta = TargetValue - BaseValue
-
-    local NewKeypoints = {}
-
-    for _, Keypoint in Keypoints do
-        local Hue, Saturation, Brightness = Keypoint.Value:ToHSV()
-
-        table.insert(NewKeypoints, ColorSequenceKeypoint.new(
-            Keypoint.Time,
-            Color3.fromHSV(
-                (Hue + HueDelta) % 1,
-                math.clamp(Saturation + SaturationDelta, 0, 1),
-                math.clamp(Brightness + ValueDelta, 0, 1)
-            )
-        ))
-    end
-
-    return ColorSequence.new(NewKeypoints)
 end
 
 function EffectOps.ApplyResizeMultiplier(Multiplier : number, Instances : {Instance})
