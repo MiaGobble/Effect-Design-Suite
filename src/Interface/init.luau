@@ -1731,8 +1731,17 @@ function Interface:Init() : DockWidgetPluginGui
             return
         end
 
+        VfxApiInjection.EnsureSharedModules(Bin)
+
+        local Parent = SelectedInstances[1]
+        local Existing = Parent:FindFirstChild("PlayEffect")
+        if Existing then
+            Existing:Destroy()
+        end
+
         local PlayEffectModule = Bin.PlaybackModules.PlayEffect:Clone()
-        PlayEffectModule.Parent = SelectedInstances[1]
+        PlayEffectModule.Name = "PlayEffect"
+        PlayEffectModule.Parent = Parent
         Selection:Set({PlayEffectModule})
     end)
 

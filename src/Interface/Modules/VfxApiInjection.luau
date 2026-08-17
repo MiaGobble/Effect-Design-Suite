@@ -27,8 +27,28 @@ shared.PlayEffect = function(Target)
 end
 ]]
 
+local function ReplaceChild(Container : Instance, Name : string, Template : Instance?)
+    if not Template then
+        return nil
+    end
+
+    local Existing = Container:FindFirstChild(Name)
+    if Existing then
+        Existing:Destroy()
+    end
+
+    local Clone = Template:Clone()
+    Clone.Name = Name
+    Clone.Parent = Container
+    return Clone
+end
+
 function VfxApiInjection.EnsureSharedModules(BinFolder : Instance)
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local PlaybackModules = BinFolder:FindFirstChild("PlaybackModules")
+    if not PlaybackModules then
+        return nil
+    end
 
     local Container = ReplicatedStorage:FindFirstChild(CONTAINER_NAME)
     if not Container then
@@ -37,20 +57,8 @@ function VfxApiInjection.EnsureSharedModules(BinFolder : Instance)
         Container.Parent = ReplicatedStorage
     end
 
-    if not Container:FindFirstChild("PlayEffect") then
-        local PlayEffectModule = BinFolder.PlaybackModules.PlayEffect:Clone()
-        PlayEffectModule.Name = "PlayEffect"
-        PlayEffectModule.Parent = Container
-    end
-
-    if not Container:FindFirstChild("PartAnimation") then
-        local PartAnimationModule = BinFolder.PlaybackModules:FindFirstChild("PartAnimation")
-        if PartAnimationModule then
-            local Clone = PartAnimationModule:Clone()
-            Clone.Name = "PartAnimation"
-            Clone.Parent = Container
-        end
-    end
+    ReplaceChild(Container, "PlayEffect", PlaybackModules:FindFirstChild("PlayEffect"))
+    ReplaceChild(Container, "PartAnimation", PlaybackModules:FindFirstChild("PartAnimation"))
 
     local Packages = BinFolder:FindFirstChild("Packages")
     if Packages then

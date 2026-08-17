@@ -226,15 +226,28 @@ local function DriveMoverAlpha(Mover : Instance, TweenStyle : TweenInfo, OnAlpha
     return TotalDuration
 end
 
-local function SetMoverWorldPosition(Mover : Instance, Position : Vector3, Rotation : CFrame)
-    if Mover:IsA("BasePart") then
-        Mover.CFrame = CFrame.new(Position) * Rotation.Rotation
-        return
+local function GetRotationCFrame(Value : CFrame) : CFrame
+    return Value.Rotation
+end
+
+local function SampleRotationCFrame(Rotations : {CFrame}, Alpha : number) : CFrame
+    if #Rotations == 0 then
+        return CFrame.identity
     end
 
-    if Mover:IsA("Attachment") then
-        Mover.WorldPosition = Position
+    if #Rotations == 1 then
+        return GetRotationCFrame(Rotations[1])
     end
+
+    local Clamped = math.clamp(Alpha, 0, 1)
+    local Scaled = Clamped * (#Rotations - 1)
+    local Index = math.clamp(math.floor(Scaled) + 1, 1, #Rotations - 1)
+    local LocalAlpha = Scaled - (Index - 1)
+    return GetRotationCFrame(Rotations[Index]:Lerp(Rotations[Index + 1], LocalAlpha))
+end
+
+local function MakeWorldCFrame(Position : Vector3, Rotation : CFrame) : CFrame
+    return CFrame.new(Position) * GetRotationCFrame(Rotation)
 end
 
 -- Function to animate tweens
@@ -340,24 +353,31 @@ local function AnimateBezier(Host : Instance)
     end
 
     local OriginCFrame = GetWorldCFrame(Origin)
+    local TargetCFrame = GetWorldCFrame(Target)
     local OriginPosition = GetWorldPosition(Origin)
     local TargetPosition = GetWorldPosition(Target)
-    if not OriginCFrame or not OriginPosition or not TargetPosition then
+    if not OriginCFrame or not TargetCFrame or not OriginPosition or not TargetPosition then
         return
     end
 
     local Positions = {}
+    local Rotations = {OriginCFrame}
 
     table.insert(Positions, OriginPosition)
 
     for _, Midpoint in Midpoints do
         local MidpointPosition = GetWorldPosition(Midpoint)
+        local MidpointCFrame = GetWorldCFrame(Midpoint)
         if MidpointPosition then
             table.insert(Positions, MidpointPosition)
+        end
+        if MidpointCFrame then
+            table.insert(Rotations, MidpointCFrame)
         end
     end
 
     table.insert(Positions, TargetPosition)
+    table.insert(Rotations, TargetCFrame)
 
     local BezierCurve = Bezier.new(unpack(Positions))
 
@@ -370,46 +390,20 @@ local function AnimateBezier(Host : Instance)
         AnimationIndicator.DelayTime.Value
     )
 
-    local Rotation = OriginCFrame.Rotation
+    local OriginalCFrame = if Mover:IsA("BasePart") then Mover.CFrame else nil
     if Mover:IsA("BasePart") then
         StopMoverDriver(Mover)
-        local OriginalCFrame = Mover.CFrame
-        return DriveMoverAlpha(Mover, TweenStyle, function(Alpha)
-            local Position = BezierCurve:CalculatePositionAt(Alpha)
-            SetMoverWorldPosition(Mover, Position, Rotation)
-        end, function()
-            if Mover.Parent then
-                Mover.CFrame = OriginalCFrame
-            end
-        end)
+        OriginalCFrame = Mover.CFrame
     end
 
-    if Mover:FindFirstChild("ReferenceValue") then
-        Mover:FindFirstChild("ReferenceValue"):Destroy()
-    end
-
-    local ReferenceValue = Instance.new("NumberValue")
-    ReferenceValue.Value = 0
-    ReferenceValue.Name = "ReferenceValue"
-    ReferenceValue.Parent = Mover
-
-    local Tween = TweenService:Create(ReferenceValue, TweenStyle, {
-        Value = 1
-    })
-
-    Tween.Completed:Connect(function()
-        ReferenceValue:Destroy()
-    end)
-
-    ReferenceValue.Changed:Connect(function()
-        local Position = BezierCurve:CalculatePositionAt(ReferenceValue.Value)
-        SetMoverWorldPosition(Mover, Position, Rotation)
-    end)
-
-    SetMoverCFrame(Mover, OriginCFrame)
-    Tween:Play()
-
-    return GetTimeFromTweenInfo(TweenStyle)
+    return DriveMoverAlpha(Mover, TweenStyle, function(Alpha)
+        local Position = BezierCurve:CalculatePositionAt(Alpha)
+        SetMoverCFrame(Mover, MakeWorldCFrame(Position, SampleRotationCFrame(Rotations, Alpha)))
+    end, if OriginalCFrame then function()
+        if Mover.Parent then
+            Mover.CFrame = OriginalCFrame
+        end
+    end else nil)
 end
 
 local function PlayHostAnimationIndicator(Host : Instance) : number?
