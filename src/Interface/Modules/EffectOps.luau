@@ -1,51 +1,54 @@
+local EffectOps = {}
+
+-- Constants
+local MAXIMUM_COLOR_KEYPOINTS = 20
+local CURVE_SAMPLE_BUDGET = 90
+
+-- Imports
 local Interface = script.Parent.Parent
 local Bin = Interface.Parent
 local Packages = Bin:FindFirstChild("Packages")
 local Oklab = require(Packages:FindFirstChild("Oklab"))
 
-local EffectOps = {}
-
-local MAXIMUM_COLOR_KEYPOINTS = 20
-
-local function SortColorPoints(Points)
-    local Sorted = table.clone(Points)
-    table.sort(Sorted, function(Left, Right)
-        return Left.Time < Right.Time
+local function SortColorPoints(points)
+    local Sorted = table.clone(points)
+    table.sort(Sorted, function(left, right)
+        return left.Time < right.Time
     end)
     return Sorted
 end
 
-local function PointToOklab(Point)
-    return Vector3.new(Point.L, Point.A, Point.B)
+local function PointToOklab(point)
+    return Vector3.new(point.L, point.A, point.B)
 end
 
-function EffectOps.Color3ToOklabPoint(Color : Color3, Time : number)
-    local Value = Oklab.ToOklab(Color)
+function EffectOps.Color3ToOklabPoint(color : Color3, time : number)
+    local Value = Oklab.ToOklab(color)
     return {
-        Time = math.clamp(Time, 0, 1),
+        Time = math.clamp(time, 0, 1),
         L = Value.X,
         A = Value.Y,
         B = Value.Z,
     }
 end
 
-function EffectOps.OklabPointToColor3(Point)
-    return Oklab.FromOklab(PointToOklab(Point))
+function EffectOps.OklabPointToColor3(point)
+    return Oklab.FromOklab(PointToOklab(point))
 end
 
-function EffectOps.ReadOklabPointsFromColorSequence(Sequence : ColorSequence)
+function EffectOps.ReadOklabPointsFromColorSequence(sequence : ColorSequence)
     local Points = {}
 
-    for _, Keypoint in Sequence.Keypoints do
-        table.insert(Points, EffectOps.Color3ToOklabPoint(Keypoint.Value, Keypoint.Time))
+    for _, keypoint in sequence.Keypoints do
+        table.insert(Points, EffectOps.Color3ToOklabPoint(keypoint.Value, keypoint.Time))
     end
 
     return Points
 end
 
-function EffectOps.InterpolateOklabPoints(Points, Time : number)
-    local Sorted = SortColorPoints(Points)
-    local ClampedTime = math.clamp(Time, 0, 1)
+function EffectOps.InterpolateOklabPoints(points, time : number)
+    local Sorted = SortColorPoints(points)
+    local ClampedTime = math.clamp(time, 0, 1)
 
     if #Sorted == 0 then
         return Vector3.new(1, 0, 0)
@@ -55,9 +58,9 @@ function EffectOps.InterpolateOklabPoints(Points, Time : number)
         return PointToOklab(Sorted[1])
     end
 
-    for Index = 1, #Sorted - 1 do
-        local Start = Sorted[Index]
-        local Finish = Sorted[Index + 1]
+    for index = 1, #Sorted - 1 do
+        local Start = Sorted[index]
+        local Finish = Sorted[index + 1]
 
         if ClampedTime <= Finish.Time then
             local Duration = Finish.Time - Start.Time
@@ -69,8 +72,8 @@ function EffectOps.InterpolateOklabPoints(Points, Time : number)
     return PointToOklab(Sorted[#Sorted])
 end
 
-function EffectOps.BuildColorSequenceFromOklabPoints(Points)
-    local Sorted = SortColorPoints(Points)
+function EffectOps.BuildColorSequenceFromOklabPoints(points)
+    local Sorted = SortColorPoints(points)
 
     if #Sorted == 0 then
         return ColorSequence.new(Color3.new(1, 1, 1))
@@ -85,8 +88,8 @@ function EffectOps.BuildColorSequenceFromOklabPoints(Points)
     -- with evenly spaced samples so Roblox's interpolation approximates Oklab.
     local SampleTimes = {}
     local SeenTimes = {}
-    local function AddTime(Time)
-        local Clamped = math.clamp(Time, 0, 1)
+    local function AddTime(time)
+        local Clamped = math.clamp(time, 0, 1)
         local Key = math.floor(Clamped * 1000000 + 0.5)
         if not SeenTimes[Key] then
             SeenTimes[Key] = true
@@ -94,8 +97,8 @@ function EffectOps.BuildColorSequenceFromOklabPoints(Points)
         end
     end
 
-    for _, Point in Sorted do
-        AddTime(Point.Time)
+    for _, point in Sorted do
+        AddTime(point.Time)
     end
     AddTime(0)
     AddTime(1)
@@ -105,11 +108,11 @@ function EffectOps.BuildColorSequenceFromOklabPoints(Points)
 
         local LargestGap = 0
         local Midpoint = nil
-        for Index = 1, #SampleTimes - 1 do
-            local Gap = SampleTimes[Index + 1] - SampleTimes[Index]
+        for index = 1, #SampleTimes - 1 do
+            local Gap = SampleTimes[index + 1] - SampleTimes[index]
             if Gap > LargestGap then
                 LargestGap = Gap
-                Midpoint = SampleTimes[Index] + Gap / 2
+                Midpoint = SampleTimes[index] + Gap / 2
             end
         end
 
@@ -122,33 +125,33 @@ function EffectOps.BuildColorSequenceFromOklabPoints(Points)
     table.sort(SampleTimes)
 
     local Keypoints = {}
-    for _, SampleTime in SampleTimes do
-        local OklabValue = EffectOps.InterpolateOklabPoints(Sorted, SampleTime)
-        table.insert(Keypoints, ColorSequenceKeypoint.new(SampleTime, Oklab.FromOklab(OklabValue)))
+    for _, sampleTime in SampleTimes do
+        local OklabValue = EffectOps.InterpolateOklabPoints(Sorted, sampleTime)
+        table.insert(Keypoints, ColorSequenceKeypoint.new(sampleTime, Oklab.FromOklab(OklabValue)))
     end
 
     return ColorSequence.new(Keypoints)
 end
 
-function EffectOps.ScaleValueByMultiplier(Value, Multiplier : number)
-    local ValueType = typeof(Value)
+function EffectOps.ScaleValueByMultiplier(value, multiplier : number)
+    local ValueType = typeof(value)
 
     if ValueType == "number" then
-        return Value * Multiplier
+        return value * multiplier
     end
 
     if ValueType == "NumberRange" then
-        return NumberRange.new(Value.Min * Multiplier, Value.Max * Multiplier)
+        return NumberRange.new(value.Min * multiplier, value.Max * multiplier)
     end
 
     if ValueType == "NumberSequence" then
         local Keypoints = {}
 
-        for _, Keypoint in Value.Keypoints do
+        for _, keypoint in value.Keypoints do
             table.insert(Keypoints, NumberSequenceKeypoint.new(
-                Keypoint.Time,
-                Keypoint.Value * Multiplier,
-                Keypoint.Envelope * Multiplier
+                keypoint.Time,
+                keypoint.Value * multiplier,
+                keypoint.Envelope * multiplier
             ))
         end
 
@@ -156,39 +159,39 @@ function EffectOps.ScaleValueByMultiplier(Value, Multiplier : number)
     end
 
     if ValueType == "Vector3" then
-        return Value * Multiplier
+        return value * multiplier
     end
 
-    return Value
+    return value
 end
 
-function EffectOps.ApplyResizeMultiplier(Multiplier : number, Instances : {Instance})
-    if not Multiplier then
+function EffectOps.ApplyResizeMultiplier(multiplier : number, instances : {Instance})
+    if not multiplier then
         return
     end
 
-    for _, Instance in Instances do
-        if Instance:IsA("ParticleEmitter") then
-            Instance.Size = EffectOps.ScaleValueByMultiplier(Instance.Size, Multiplier)
-        elseif Instance:IsA("Beam") then
-            Instance.Width0 = Instance.Width0 * Multiplier
-            Instance.Width1 = Instance.Width1 * Multiplier
-        elseif Instance:IsA("Trail") then
-            Instance.WidthScale = EffectOps.ScaleValueByMultiplier(Instance.WidthScale, Multiplier)
-        elseif Instance:IsA("Attachment") then
-            Instance.Position = Instance.Position * Multiplier
+    for _, instance in instances do
+        if instance:IsA("ParticleEmitter") then
+            instance.Size = EffectOps.ScaleValueByMultiplier(instance.Size, multiplier)
+        elseif instance:IsA("Beam") then
+            instance.Width0 = instance.Width0 * multiplier
+            instance.Width1 = instance.Width1 * multiplier
+        elseif instance:IsA("Trail") then
+            instance.WidthScale = EffectOps.ScaleValueByMultiplier(instance.WidthScale, multiplier)
+        elseif instance:IsA("Attachment") then
+            instance.Position = instance.Position * multiplier
         end
     end
 end
 
-function EffectOps.ReadCurvePointsFromNumberSequence(Sequence : NumberSequence)
-    local Keypoints = Sequence.Keypoints
+function EffectOps.ReadCurvePointsFromNumberSequence(sequence : NumberSequence)
+    local Keypoints = sequence.Keypoints
         local MinValue = math.huge
     local MaxValue = -math.huge
 
-    for _, Keypoint in Keypoints do
-        MinValue = math.min(MinValue, Keypoint.Value)
-        MaxValue = math.max(MaxValue, Keypoint.Value)
+    for _, keypoint in Keypoints do
+        MinValue = math.min(MinValue, keypoint.Value)
+        MaxValue = math.max(MaxValue, keypoint.Value)
     end
 
     if MinValue == math.huge then
@@ -200,11 +203,11 @@ function EffectOps.ReadCurvePointsFromNumberSequence(Sequence : NumberSequence)
 
     local ValueRange = MaxValue - MinValue
 
-    local Points = {}
-    for _, Keypoint in Keypoints do
-        table.insert(Points, {
-            Time = Keypoint.Time,
-            Value = math.clamp((Keypoint.Value - MinValue) / ValueRange, 0, 1),
+    local points = {}
+    for _, keypoint in Keypoints do
+        table.insert(points, {
+            Time = keypoint.Time,
+            Value = math.clamp((keypoint.Value - MinValue) / ValueRange, 0, 1),
             -- Existing NumberSequences have no tangent data, so preserve them as
             -- piecewise-linear curves until the user edits a handle.
             InHandleX = 0,
@@ -214,49 +217,49 @@ function EffectOps.ReadCurvePointsFromNumberSequence(Sequence : NumberSequence)
         })
     end
 
-        return Points, MinValue, MaxValue
+        return points, MinValue, MaxValue
 end
 
-function EffectOps.BuildNumberSequenceFromCurve(Points : {{Time : number, Value : number}}, MinRange : number, MaxRange : number)
-    local Sorted = table.clone(Points)
-    table.sort(Sorted, function(Left, Right)
-        return Left.Time < Right.Time
+function EffectOps.BuildNumberSequenceFromCurve(points : {{time : number, Value : number}}, minRange : number, maxRange : number)
+    local Sorted = table.clone(points)
+    table.sort(Sorted, function(left, right)
+        return left.Time < right.Time
     end)
 
     if #Sorted == 0 then
         return NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0)})
     end
 
-    local function GetHandle(Point, Prefix, DefaultX)
-        local X = Point[Prefix .. "HandleX"]
-        local Y = Point[Prefix .. "HandleY"]
+    local function GetHandle(point, prefix, defaultX)
+        local X = point[prefix .. "HandleX"]
+        local Y = point[prefix .. "HandleY"]
 
         -- Support the original handle fields used by older curve data.
-        if X == nil and Prefix == "Out" then
-            X = Point.OutHandle
-        elseif X == nil and Prefix == "In" then
-            X = Point.InHandle
+        if X == nil and prefix == "Out" then
+            X = point.OutHandle
+        elseif X == nil and prefix == "In" then
+            X = point.InHandle
         end
 
-        return X or DefaultX, Y or 0
+        return X or defaultX, Y or 0
     end
 
-    local function Cubic(A, B, C, D, T)
-        local U = 1 - T
-        return A * U * U * U + 3 * B * U * U * T + 3 * C * U * T * T + D * T * T * T
+    local function Cubic(a, b, c, d, t)
+        local U = 1 - t
+        return a * U * U * U + 3 * b * U * U * t + 3 * c * U * t * t + d * t * t * t
     end
 
     local Samples = {}
-    local SamplesPerSegment = math.max(2, math.floor(90 / math.max(1, #Sorted - 1)))
+    local SamplesPerSegment = math.max(2, math.floor(CURVE_SAMPLE_BUDGET / math.max(1, #Sorted - 1)))
 
-    for Index = 1, #Sorted - 1 do
-        local Start = Sorted[Index]
-        local Finish = Sorted[Index + 1]
+    for index = 1, #Sorted - 1 do
+        local Start = Sorted[index]
+        local Finish = Sorted[index + 1]
         local OutX, OutY = GetHandle(Start, "Out", 0)
         local InX, InY = GetHandle(Finish, "In", 0)
 
-        for Step = 0, SamplesPerSegment - 1 do
-            local T = Step / SamplesPerSegment
+        for step = 0, SamplesPerSegment - 1 do
+            local T = step / SamplesPerSegment
             table.insert(Samples, {
                 Time = Cubic(Start.Time, Start.Time + OutX, Finish.Time + InX, Finish.Time, T),
                 Value = Cubic(Start.Value, Start.Value + OutY, Finish.Value + InY, Finish.Value, T),
@@ -266,20 +269,20 @@ function EffectOps.BuildNumberSequenceFromCurve(Points : {{Time : number, Value 
 
     local Last = Sorted[#Sorted]
     table.insert(Samples, {Time = Last.Time, Value = Last.Value})
-    table.sort(Samples, function(Left, Right)
-        return Left.Time < Right.Time
+    table.sort(Samples, function(left, right)
+        return left.Time < right.Time
     end)
 
     local Keypoints = {}
     local LastTime = nil
-    for _, Sample in Samples do
-        local Time = math.clamp(Sample.Time, 0, 1)
-        if LastTime == nil or Time > LastTime then
+    for _, sample in Samples do
+        local time = math.clamp(sample.Time, 0, 1)
+        if LastTime == nil or time > LastTime then
             table.insert(Keypoints, NumberSequenceKeypoint.new(
-                Time,
-                MinRange + math.clamp(Sample.Value, 0, 1) * (MaxRange - MinRange)
+                time,
+                minRange + math.clamp(sample.Value, 0, 1) * (maxRange - minRange)
             ))
-            LastTime = Time
+            LastTime = time
         end
     end
 
@@ -288,8 +291,8 @@ function EffectOps.BuildNumberSequenceFromCurve(Points : {{Time : number, Value 
     local MaximumKeypoints = 20
     if #Keypoints > MaximumKeypoints then
         local Simplified = {}
-        for Index = 0, MaximumKeypoints - 1 do
-            local SourceIndex = math.floor(Index * (#Keypoints - 1) / (MaximumKeypoints - 1)) + 1
+        for index = 0, MaximumKeypoints - 1 do
+            local SourceIndex = math.floor(index * (#Keypoints - 1) / (MaximumKeypoints - 1)) + 1
             table.insert(Simplified, Keypoints[SourceIndex])
         end
         Keypoints = Simplified
@@ -298,88 +301,88 @@ function EffectOps.BuildNumberSequenceFromCurve(Points : {{Time : number, Value 
     return NumberSequence.new(Keypoints)
 end
 
-function EffectOps.ApplyMathOperation(Value: number, Property: string, Operation: string, Instances: {Instance})
-    if not Value or Property == "" then
+function EffectOps.ApplyMathOperation(value: number, property: string, operation: string, instances: {Instance})
+    if not value or property == "" then
         return
     end
 
-    for _, Instance in Instances do
-        if not (Instance:IsA("ParticleEmitter") and Instance[Property]) then
+    for _, instance in instances do
+        if not (instance:IsA("ParticleEmitter") and instance[property]) then
             continue
         end
 
-        local PropertyType = typeof(Instance[Property])
+        local PropertyType = typeof(instance[property])
 
         if PropertyType == "NumberSequence" then
-            local OldSequence = Instance[Property]
+            local OldSequence = instance[property]
             local NewKeypoints = {}
 
-            for _, Keypoint in OldSequence.Keypoints do
+            for _, keypoint in OldSequence.Keypoints do
                 local NewValue, NewEnvelope
 
-                if Operation == "add" then
-                    NewValue = Keypoint.Value + Value
-                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope + Value)
-                elseif Operation == "subtract" then
-                    NewValue = Keypoint.Value - Value
-                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope - Value)
-                elseif Operation == "multiply" then
-                    NewValue = Keypoint.Value * Value
-                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope * Value)
-                elseif Operation == "divide" then
-                    if Value == 0 then
+                if operation == "add" then
+                    NewValue = keypoint.Value + value
+                    NewEnvelope = keypoint.Envelope and (keypoint.Envelope + value)
+                elseif operation == "subtract" then
+                    NewValue = keypoint.Value - value
+                    NewEnvelope = keypoint.Envelope and (keypoint.Envelope - value)
+                elseif operation == "multiply" then
+                    NewValue = keypoint.Value * value
+                    NewEnvelope = keypoint.Envelope and (keypoint.Envelope * value)
+                elseif operation == "divide" then
+                    if value == 0 then
                         continue
                     end
 
-                    NewValue = Keypoint.Value / Value
-                    NewEnvelope = Keypoint.Envelope and (Keypoint.Envelope / Value)
+                    NewValue = keypoint.Value / value
+                    NewEnvelope = keypoint.Envelope and (keypoint.Envelope / value)
                 end
 
                 table.insert(NewKeypoints, NumberSequenceKeypoint.new(
-                    Keypoint.Time,
+                    keypoint.Time,
                     NewValue,
                     NewEnvelope
                 ))
             end
 
-            Instance[Property] = NumberSequence.new(NewKeypoints)
+            instance[property] = NumberSequence.new(NewKeypoints)
         elseif PropertyType == "NumberRange" then
-            local OldMin = Instance[Property].Min
-            local OldMax = Instance[Property].Max
+            local OldMin = instance[property].Min
+            local OldMax = instance[property].Max
             local NewMin, NewMax
 
-            if Operation == "add" then
-                NewMin = OldMin + Value
-                NewMax = OldMax + Value
-            elseif Operation == "subtract" then
-                NewMin = OldMin - Value
-                NewMax = OldMax - Value
-            elseif Operation == "multiply" then
-                NewMin = OldMin * Value
-                NewMax = OldMax * Value
-            elseif Operation == "divide" then
-                if Value == 0 then
+            if operation == "add" then
+                NewMin = OldMin + value
+                NewMax = OldMax + value
+            elseif operation == "subtract" then
+                NewMin = OldMin - value
+                NewMax = OldMax - value
+            elseif operation == "multiply" then
+                NewMin = OldMin * value
+                NewMax = OldMax * value
+            elseif operation == "divide" then
+                if value == 0 then
                     continue
                 end
 
-                NewMin = OldMin / Value
-                NewMax = OldMax / Value
+                NewMin = OldMin / value
+                NewMax = OldMax / value
             end
 
-            Instance[Property] = NumberRange.new(NewMin, NewMax)
+            instance[property] = NumberRange.new(NewMin, NewMax)
         elseif PropertyType == "number" then
-            if Operation == "add" then
-                Instance[Property] = Instance[Property] + Value
-            elseif Operation == "subtract" then
-                Instance[Property] = Instance[Property] - Value
-            elseif Operation == "multiply" then
-                Instance[Property] = Instance[Property] * Value
-            elseif Operation == "divide" then
-                if Value == 0 then
+            if operation == "add" then
+                instance[property] = instance[property] + value
+            elseif operation == "subtract" then
+                instance[property] = instance[property] - value
+            elseif operation == "multiply" then
+                instance[property] = instance[property] * value
+            elseif operation == "divide" then
+                if value == 0 then
                     continue
                 end
 
-                Instance[Property] = Instance[Property] / Value
+                instance[property] = instance[property] / value
             end
         end
     end

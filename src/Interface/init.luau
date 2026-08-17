@@ -1,9 +1,39 @@
 local Interface = {}
 
-local Selection = game:GetService("Selection")
+-- Constants
+local VERSION_FILE_NAME = "VERSION.txt"
+local VERSION_OBJECT_NAME = "VERSION"
+local GITHUB_VERSION_URLS = {
+    "https://raw.githubusercontent.com/MiaGobble/Effect-Design-Suite/main/src/VERSION.txt",
+    "https://raw.githubusercontent.com/MiaGobble/Effect-Design-Suite/refs/heads/main/src/VERSION.txt",
+    "https://raw.githubusercontent.com/MiaGobble/Effect-Design-Suite/main/VERSION.txt",
+}
+local HTTP_PERMISSION_NEEDLES = {
+    "http requests are not enabled",
+    "permission",
+    "not allowed",
+    "trust check",
+    "aborted",
+}
+local HTTP_PERMISSION_WARNING = "This plugin does not have HTTP permissions and cannot check for updates."
+local COLOR_SEQUENCE_ATTRIBUTE = "EffectDesignerOklabColorSequence"
+local CURVE_ATTRIBUTE_PREFIX = "EffectDesignerCurve_"
+local TEXTURE_ID_PREFIX = "rbxassetid://"
+local MAIN_WIDGET_ID = "EffectDesignerSuite"
+local MAIN_WIDGET_TITLE = "Effect Designer Suite"
+local COLOR_PICKER_WIDGET_ID = "EffectDesignerSuiteColorPicker"
+local ASSETS_WIDGET_ID = "EffectDesignerSuiteAssets"
+local MAIN_WIDGET_WIDTH = 320
+local MAIN_WIDGET_HEIGHT = 480
+local MAIN_WIDGET_MIN_SIZE = 320
+
+-- Services
+local SelectionService = game:GetService("Selection")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
+local ContentProvider = game:GetService("ContentProvider")
 
+-- Imports
 local Bin = script.Parent
 local Objects = Bin:FindFirstChild("Objects")
 local Packages = Bin:FindFirstChild("Packages")
@@ -17,115 +47,295 @@ local Modules = script:FindFirstChild("Modules")
 local PropertyMaps = require(Modules:FindFirstChild("PropertyMaps"))
 local EffectOps = require(Modules:FindFirstChild("EffectOps"))
 local VfxApiInjection = require(Modules:FindFirstChild("VfxApiInjection"))
+local WorldSpaceAcceleration = require(Modules:FindFirstChild("WorldSpaceAcceleration"))
+local PartAnimation = require(Modules:FindFirstChild("PartAnimation"))
 local Dropdown = require(Components:FindFirstChild("Dropdown"))
 local SliderInput = require(Components:FindFirstChild("SliderInput"))
 local CurveEditor = require(Components:FindFirstChild("CurveEditor"))
 local ColorPicker = require(Components:FindFirstChild("ColorPicker"))
 local ColorSequenceEditor = require(Components:FindFirstChild("ColorSequenceEditor"))
 
+-- Variables
 local InterfaceScope = nil
+local PendingPreviewLoads = {}
 
-local function FormatTextureId(TextureId : number | string)
-    return "rbxassetid://" .. tostring(TextureId)
+local function TrimVersionText(text : string) : string
+    text = string.gsub(text, "^%s+", "")
+    text = string.gsub(text, "%s+$", "")
+    return text
 end
 
-local function GetFlipbookGridSize(FlipbookType : number?)
-    if FlipbookType == 8 then
+local function ParseVersionParts(text : string) : {number}?
+    local Clean = string.match(text, "^v?(%d+[%.%d]*)$")
+    if not Clean then
+        return nil
+    end
+
+    local Parts = {}
+    for number in string.gmatch(Clean, "%d+") do
+        table.insert(Parts, tonumber(number) or 0)
+    end
+
+    if #Parts == 0 then
+        return nil
+    end
+
+    return Parts
+end
+
+local function IsRemoteVersionNewer(remoteText : string, localText : string) : boolean
+    local RemoteParts = ParseVersionParts(remoteText)
+    local LocalParts = ParseVersionParts(localText)
+    if not RemoteParts or not LocalParts then
+        return false
+    end
+
+    local Count = math.max(#RemoteParts, #LocalParts)
+    for index = 1, Count do
+        local RemotePart = RemoteParts[index] or 0
+        local LocalPart = LocalParts[index] or 0
+        if RemotePart > LocalPart then
+            return true
+        elseif RemotePart < LocalPart then
+            return false
+        end
+    end
+
+    return false
+end
+
+local function ReadLocalVersion() : string?
+    local VersionObject = Bin:FindFirstChild(VERSION_FILE_NAME) or Bin:FindFirstChild(VERSION_OBJECT_NAME)
+    if not VersionObject then
+        return nil
+    end
+
+    local Text = nil
+    if VersionObject:IsA("StringValue") then
+        Text = VersionObject.Value
+    elseif VersionObject:IsA("LuaSourceContainer") then
+        Text = VersionObject.Source
+    end
+
+    if typeof(Text) ~= "string" then
+        return nil
+    end
+
+    Text = TrimVersionText(Text)
+    if Text == "" then
+        return nil
+    end
+
+    return Text
+end
+
+local function IsHttpPermissionError(thisError) : boolean
+    local Text = string.lower(tostring(thisError))
+    for _, needle in HTTP_PERMISSION_NEEDLES do
+        if string.find(Text, needle, 1, true) ~= nil then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function FetchGitHubVersion() : (string?, boolean)
+    for _, url in GITHUB_VERSION_URLS do
+        local Success, Result = pcall(function()
+            return HttpService:GetAsync(url)
+        end)
+
+        if Success and typeof(Result) == "string" then
+            local Text = TrimVersionText(Result)
+            if Text ~= "" and ParseVersionParts(Text) then
+                return Text, false
+            end
+        elseif not Success and IsHttpPermissionError(Result) then
+            return nil, true
+        end
+    end
+
+    return nil, false
+end
+
+local function FormatTextureId(textureId : number | string)
+    return TEXTURE_ID_PREFIX .. tostring(textureId)
+end
+
+local function GetFlipbookGridSize(flipbookType : number?)
+    if flipbookType == 8 then
         return 8
-    elseif FlipbookType == 4 then
+    elseif flipbookType == 4 then
         return 4
+    elseif flipbookType == 2 then
+        return 2
     end
 
     return 1
 end
 
-local function GetParticleFlipbookLayout(FlipbookType : number?)
-    if FlipbookType == 8 then
+local function GetParticleFlipbookLayout(flipbookType : number?)
+    if flipbookType == 8 then
         return Enum.ParticleFlipbookLayout.Grid8x8
-    elseif FlipbookType == 4 then
+    elseif flipbookType == 4 then
         return Enum.ParticleFlipbookLayout.Grid4x4
+    elseif flipbookType == 2 then
+        return Enum.ParticleFlipbookLayout.Grid2x2
     end
 
     return Enum.ParticleFlipbookLayout.None
 end
 
-local function ApplyAssetToTextureObject(Asset, Object : Instance)
-    local Texture = FormatTextureId(Asset.TextureId)
+local function GetFlipbookTypeLabel(flipbookType : number?)
+    local GridSize = GetFlipbookGridSize(flipbookType)
 
-    if Object:IsA("ParticleEmitter") then
-        Object.Texture = Texture
-        Object.FlipbookLayout = GetParticleFlipbookLayout(Asset.FlipbookType)
-        Object.FlipbookMode = Enum.ParticleFlipbookMode.Loop
+    if GridSize <= 1 then
+        return "Static"
+    end
 
-        if GetFlipbookGridSize(Asset.FlipbookType) > 1 then
-            Object.FlipbookFramerate = NumberRange.new(24)
+    return string.format("%dx%d flipbook", GridSize, GridSize)
+end
+
+local function ApplyAssetToTextureObject(asset, object : Instance)
+    local Texture = FormatTextureId(asset.TextureId)
+
+    if object:IsA("ParticleEmitter") then
+        object.Texture = Texture
+        object.FlipbookLayout = GetParticleFlipbookLayout(asset.FlipbookType)
+        object.FlipbookMode = Enum.ParticleFlipbookMode.Loop
+
+        if GetFlipbookGridSize(asset.FlipbookType) > 1 then
+            object.FlipbookFramerate = NumberRange.new(24)
         else
-            Object.FlipbookFramerate = NumberRange.new(1)
+            object.FlipbookFramerate = NumberRange.new(1)
         end
-    elseif Object:IsA("Beam") or Object:IsA("Trail") then
-        Object.Texture = Texture
+    elseif object:IsA("Beam") or object:IsA("Trail") then
+        object.Texture = Texture
     end
 end
 
-local function ResolveParticleInsertParent(SelectionTarget : Instance?)
-    if not SelectionTarget then
+local function ResolveParticleInsertParent(selectionTarget : Instance?)
+    if not selectionTarget then
         return nil
     end
 
-    if SelectionTarget:IsA("ParticleEmitter") or SelectionTarget:IsA("Trail") or SelectionTarget:IsA("Beam") then
-        return SelectionTarget.Parent
+    if selectionTarget:IsA("ParticleEmitter") or selectionTarget:IsA("Trail") or selectionTarget:IsA("Beam") then
+        return selectionTarget.Parent
     end
 
-    return SelectionTarget
+    return selectionTarget
 end
 
-local function CreatePreviewFrame(Scope, PreviewEntries, Asset, LayoutOrder : number, Animate : boolean?, Size : UDim2?)
-    local PreviewWindow = Scope:New("Frame", {
-        LayoutOrder = LayoutOrder,
-        Size = Size or UDim2.fromOffset(88, 88),
+local function CreatePreviewFrame(scope, previewEntries, asset, layoutOrder : number, animate : boolean?, size : UDim2?)
+    local PreviewWindow = scope:New("Frame", {
+        LayoutOrder = layoutOrder,
+        Size = size or UDim2.fromOffset(88, 88),
         BackgroundColor3 = Color3.fromRGB(28, 28, 28),
         BorderSizePixel = 0,
         ClipsDescendants = true,
 
         [Seam.Children] = {
-            Scope:New("UICorner", {
+            scope:New("UICorner", {
                 CornerRadius = UDim.new(0, 6),
             }),
-            Scope:New("UIStroke", {
+            scope:New("UIStroke", {
                 Color = Color3.fromRGB(52, 52, 52),
                 Thickness = 1,
             }),
         },
     })
 
-    local GridSize = GetFlipbookGridSize(Asset.FlipbookType)
-    local PreviewImage = Scope:New("ImageLabel", {
-        Parent = PreviewWindow,
+    local GridSize = GetFlipbookGridSize(asset.FlipbookType)
+    local ImageParent = PreviewWindow
+
+    if GridSize > 1 then
+        ImageParent = scope:New("Frame", {
+            Parent = PreviewWindow,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromScale(1, 1),
+            BackgroundTransparency = 1,
+            ClipsDescendants = true,
+
+            [Seam.Children] = {
+                scope:New("UIAspectRatioConstraint", {
+                    AspectRatio = 1,
+                    AspectType = Enum.AspectType.FitWithinMaxSize,
+                }),
+            },
+        })
+    end
+
+    local ImageScaleType = Enum.ScaleType.Fit
+
+    if GridSize > 1 then
+        ImageScaleType = Enum.ScaleType.Stretch
+    end
+
+    local ContentId = FormatTextureId(asset.TextureId)
+    local PreviewImage = scope:New("ImageLabel", {
+        Parent = ImageParent,
         BackgroundTransparency = 1,
-        Image = FormatTextureId(Asset.TextureId),
-        ScaleType = Enum.ScaleType.Stretch,
+        Image = ContentId,
+        ImageTransparency = 1,
+        ScaleType = ImageScaleType,
         Size = UDim2.fromScale(GridSize, GridSize),
     })
 
-    if Animate == true and GridSize > 1 then
-        table.insert(PreviewEntries, {
+    local LoadingIndicator = scope:New("TextLabel", {
+        Parent = PreviewWindow,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Size = UDim2.fromScale(1, 1),
+        Text = "Loading",
+        TextColor3 = Color3.fromRGB(168, 168, 168),
+        TextSize = 12,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        TextYAlignment = Enum.TextYAlignment.Center,
+        ZIndex = 3,
+    })
+
+    local PreviewEntry = nil
+
+    if animate == true and GridSize > 1 then
+        PreviewEntry = {
             Image = PreviewImage,
             GridSize = GridSize,
             TotalFrames = GridSize * GridSize,
             StartedAt = os.clock(),
             FramesPerSecond = GridSize == 8 and 20 or 12,
-        })
+        }
+        table.insert(previewEntries, PreviewEntry)
     end
+
+    table.insert(PendingPreviewLoads, {
+        Image = PreviewImage,
+        Indicator = LoadingIndicator,
+        PreviewEntry = PreviewEntry,
+        ContentId = ContentId,
+        Preloaded = false,
+    })
+
+    local PendingEntry = PendingPreviewLoads[#PendingPreviewLoads]
+
+    task.defer(function()
+        pcall(function()
+            ContentProvider:PreloadAsync({PendingEntry.ContentId})
+        end)
+        PendingEntry.Preloaded = true
+    end)
 
     return PreviewWindow
 end
 
-local function CreateAssetCard(Scope, PreviewEntries, Asset, LayoutOrder : number, IsSelected, SelectCallback)
-    local Card = Scope:New("Frame", {
-        LayoutOrder = LayoutOrder,
+local function CreateAssetCard(scope, previewEntries, asset, layoutOrder : number, isSelected, selectCallback)
+    local Card = scope:New("Frame", {
+        LayoutOrder = layoutOrder,
         Size = UDim2.fromOffset(188, 76),
-        BackgroundColor3 = Scope:Computed(function(Use)
-            if Use(IsSelected) then
+        BackgroundColor3 = scope:Computed(function(use)
+            if use(isSelected) then
                 return Color3.fromRGB(53, 53, 53)
             end
 
@@ -134,14 +344,14 @@ local function CreateAssetCard(Scope, PreviewEntries, Asset, LayoutOrder : numbe
         BorderSizePixel = 0,
 
         [Seam.Children] = {
-            Scope:New("UICorner", {
+            scope:New("UICorner", {
                 CornerRadius = UDim.new(0, 8),
             }),
-            Scope:New("UIStroke", {
+            scope:New("UIStroke", {
                 Color = Color3.fromRGB(56, 56, 56),
                 Thickness = 1,
             }),
-            Scope:New("UIPadding", {
+            scope:New("UIPadding", {
                 PaddingTop = UDim.new(0, 8),
                 PaddingBottom = UDim.new(0, 8),
                 PaddingLeft = UDim.new(0, 8),
@@ -150,105 +360,105 @@ local function CreateAssetCard(Scope, PreviewEntries, Asset, LayoutOrder : numbe
         },
     })
 
-    CreatePreviewFrame(Scope, PreviewEntries, Asset, 1, false, UDim2.fromOffset(56, 56)).Parent = Card
+    CreatePreviewFrame(scope, previewEntries, asset, 1, false, UDim2.fromOffset(56, 56)).Parent = Card
 
-    Scope:New(Jian.Text, {
+    scope:New(Jian.Text, {
         Parent = Card,
         LayoutOrder = 2,
         Position = UDim2.fromOffset(68, 8),
         Size = UDim2.new(1, -76, 0, 18),
         AutomaticSize = Enum.AutomaticSize.None,
-        Text = string.format("%s %03d", Asset.Type, Asset.CategoryIndex),
+        Text = string.format("%s %03d", asset.Type, asset.CategoryIndex),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 14,
     })
 
-    Scope:New(Jian.Text, {
+    scope:New(Jian.Text, {
         Parent = Card,
         LayoutOrder = 3,
         Position = UDim2.fromOffset(68, 30),
         Size = UDim2.new(1, -76, 0, 16),
         AutomaticSize = Enum.AutomaticSize.None,
-        Text = string.format("%dx%d flipbook", GetFlipbookGridSize(Asset.FlipbookType), GetFlipbookGridSize(Asset.FlipbookType)),
+        Text = GetFlipbookTypeLabel(asset.FlipbookType),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 11,
         Active = false,
     })
 
-    Scope:New("TextButton", {
+    scope:New("TextButton", {
         Parent = Card,
         BackgroundTransparency = 1,
         AutoButtonColor = false,
         Text = "",
         Size = UDim2.fromScale(1, 1),
         [Seam.OnEvent("Activated")] = function()
-            SelectCallback(Asset)
+            selectCallback(asset)
         end,
     })
 
     return Card
 end
 
-local function CreateRow(Scope, LayoutOrder : number, Children : {any}?)
-    return Scope:New("Frame", {
+local function CreateRow(scope, layoutOrder : number, children : {any}?)
+    return scope:New("Frame", {
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 36),
-        LayoutOrder = LayoutOrder,
+        LayoutOrder = layoutOrder,
 
-        [Seam.Children] = Children,
+        [Seam.Children] = children,
     })
 end
 
-local function CreateLabel(Scope, Parent : Instance, Text : any)
-    return Scope:New(Jian.Text, {
-        Parent = Parent,
-        Text = Text,
+local function CreateLabel(scope, parent : Instance, text : any)
+    return scope:New(Jian.Text, {
+        Parent = parent,
+        Text = text,
         Size = UDim2.new(0.33, -8, 1, 0),
         AutomaticSize = Enum.AutomaticSize.None,
         TextXAlignment = Enum.TextXAlignment.Left,
     })
 end
 
-local function BindTextBox(Scope, TextBox : TextBox, State)
-    Scope:AddObject(TextBox:GetPropertyChangedSignal("Text"):Connect(function()
-        State.Value = TextBox.Text
+local function BindTextBox(scope, textBox : TextBox, state)
+    scope:AddObject(textBox:GetPropertyChangedSignal("Text"):Connect(function()
+        state.Value = textBox.Text
     end))
 end
 
-local function CreateBoundTextBox(Scope, Parent : Instance, State, Active, PlaceholderText : string, Position : UDim2, Size : UDim2)
-    local TextBox = Scope:New(Jian.TextBox, {
-        Parent = Parent,
-        Text = State,
-        Active = Active,
-        PlaceholderText = PlaceholderText,
-        Position = Position,
-        Size = Size,
+local function CreateBoundTextBox(scope, parent : Instance, state, active, placeholderText : string, position : UDim2, size : UDim2)
+    local TextBox = scope:New(Jian.TextBox, {
+        Parent = parent,
+        Text = state,
+        Active = active,
+        PlaceholderText = placeholderText,
+        Position = position,
+        Size = size,
     })
 
-    BindTextBox(Scope, TextBox, State)
+    BindTextBox(scope, TextBox, state)
 
     return TextBox
 end
 
-local function CreateActionButton(Scope, LayoutOrder : number, Text : string, Active, Callback)
-    return Scope:New(Jian.TextButton, {
-        LayoutOrder = LayoutOrder,
-        Text = Text,
-        Active = Active,
+local function CreateActionButton(scope, layoutOrder : number, text : string, active, callback)
+    return scope:New(Jian.TextButton, {
+        LayoutOrder = layoutOrder,
+        Text = text,
+        Active = active,
         Size = UDim2.new(1, 0, 0, 35),
-        [Seam.OnEvent("Activated")] = Callback,
+        [Seam.OnEvent("Activated")] = callback,
     })
 end
 
-local function SyncSelectionAttribute(State, AttributeName : string)
+local function SyncSelectionAttribute(state, attributeName : string)
     local CurrentInstance = States.PrimarySelected.Value
 
     if not CurrentInstance then
-        State.Value = ""
+        state.Value = ""
         return
     end
 
-    State.Value = tostring(CurrentInstance:GetAttribute(AttributeName) or "")
+    state.Value = tostring(CurrentInstance:GetAttribute(attributeName) or "")
 end
 
 function Interface:Init() : DockWidgetPluginGui
@@ -261,57 +471,52 @@ function Interface:Init() : DockWidgetPluginGui
     InterfaceScope = Scope
 
     local MainWidget = Scope:New(Jian.Widget, {
-        WidgetId = "EffectDesignerSuite",
-        Title = "Effect Designer Suite",
+        WidgetId = MAIN_WIDGET_ID,
+        Title = MAIN_WIDGET_TITLE,
         InitialDockState = Enum.InitialDockState.Left,
         InitialEnabled = true,
         OverridePreviousState = false,
-        DefaultWidth = 320,
-        DefaultHeight = 480,
-        MinimumWidth = 320,
-        MinimumHeight = 320,
+        DefaultWidth = MAIN_WIDGET_WIDTH,
+        DefaultHeight = MAIN_WIDGET_HEIGHT,
+        MinimumWidth = MAIN_WIDGET_MIN_SIZE,
+        MinimumHeight = MAIN_WIDGET_MIN_SIZE,
     }) :: DockWidgetPluginGui
 
-    local HasEditableSelection = Scope:Computed(function(Use)
-        return #Use(States.CurrentlySelected) > 0
+    local HasEditableSelection = Scope:Computed(function(use)
+        return #use(States.CurrentlySelected) > 0
     end)
 
-    local HasSingleSelection = Scope:Computed(function(Use)
-        return Use(States.IsEmittable) and #Use(States.CurrentlySelected) == 1
+    local HasSingleSelection = Scope:Computed(function(use)
+        return use(States.IsEmittable) and #use(States.CurrentlySelected) == 1
     end)
 
-    local HasRawSelection = Scope:Computed(function(Use)
-        return #Use(States.RawSelection) > 0
+    local HasRawSelection = Scope:Computed(function(use)
+        return #use(States.RawSelection) > 0
     end)
 
-    local function HasColorSequence(Instance)
+    local function HasColorSequence(instance)
         local Success, Value = pcall(function()
-            return Instance.Color
+            return instance.Color
         end)
         return Success and typeof(Value) == "ColorSequence"
     end
 
-    local HasColorSequenceSelection = Scope:Computed(function(Use)
-        for _, Instance in Use(States.CurrentlySelected) do
-            if HasColorSequence(Instance) then
+    local function CanEditColorSequence(instance)
+        return HasColorSequence(instance) or instance:IsA("BasePart")
+    end
+
+    local HasColorSequenceSelection = Scope:Computed(function(use)
+        for _, instance in use(States.CurrentlySelected) do
+            if CanEditColorSequence(instance) then
                 return true
             end
         end
         return false
     end)
 
-    local HasReplaceTargets = Scope:Computed(function(Use)
-        local RawSelection = Use(States.RawSelection)
-        local CurrentSelection = Use(States.CurrentlySelected)
-
-        for _, Instance in RawSelection do
-            if Instance:IsA("ParticleEmitter") or Instance:IsA("Beam") or Instance:IsA("Trail") then
-                return true
-            end
-        end
-
-        for _, Instance in CurrentSelection do
-            if Instance:IsA("ParticleEmitter") or Instance:IsA("Beam") or Instance:IsA("Trail") then
+    local HasParticleEmitterSelection = Scope:Computed(function(use)
+        for _, instance in use(States.CurrentlySelected) do
+            if instance:IsA("ParticleEmitter") then
                 return true
             end
         end
@@ -319,8 +524,27 @@ function Interface:Init() : DockWidgetPluginGui
         return false
     end)
 
-    local SelectionSummary = Scope:Computed(function(Use)
-        local Selected = Use(States.CurrentlySelected)
+    local HasReplaceTargets = Scope:Computed(function(use)
+        local RawSelection = use(States.RawSelection)
+        local CurrentSelection = use(States.CurrentlySelected)
+
+        for _, instance in RawSelection do
+            if instance:IsA("ParticleEmitter") or instance:IsA("Beam") or instance:IsA("Trail") then
+                return true
+            end
+        end
+
+        for _, instance in CurrentSelection do
+            if instance:IsA("ParticleEmitter") or instance:IsA("Beam") or instance:IsA("Trail") then
+                return true
+            end
+        end
+
+        return false
+    end)
+
+    local SelectionSummary = Scope:Computed(function(use)
+        local Selected = use(States.CurrentlySelected)
 
         if #Selected == 0 then
             return "No valid emitters selected"
@@ -362,19 +586,29 @@ function Interface:Init() : DockWidgetPluginGui
             OutHandleY = 0,
         },
     })
-    local function CurveAttributeName(Property)
-        return "EffectDesignerCurve_" .. Property
+    local function CurveAttributeName(property)
+        return CURVE_ATTRIBUTE_PREFIX .. property
     end
 
-        local function CurveRangeAttributeName(Property, Suffix)
-            return CurveAttributeName(Property) .. "_" .. Suffix
+    local function CurveRangeAttributeName(property, suffix)
+        return CurveAttributeName(property) .. "_" .. suffix
+    end
+
+    local function GetDefaultCurveRange(property : string)
+        if property == "Transparency" or property == "Scale" then
+            return 0, 1
         end
 
+        return 0, 10
+    end
+
     local function ResetCurveState()
+        local MinRange, MaxRange = GetDefaultCurveRange(CurvePropertyText.Value)
+        local DefaultValue = if CurvePropertyText.Value == "Scale" then 1 else 0.5
         CurvePoints.Value = {
             {
                 Time = 0,
-                Value = 0.5,
+                Value = DefaultValue,
                 InHandleX = 0,
                 InHandleY = 0,
                 OutHandleX = 0,
@@ -382,15 +616,15 @@ function Interface:Init() : DockWidgetPluginGui
             },
             {
                 Time = 1,
-                Value = 0.5,
+                Value = DefaultValue,
                 InHandleX = 0,
                 InHandleY = 0,
                 OutHandleX = 0,
                 OutHandleY = 0,
             },
         }
-        CurveMinRangeText.Value = "0"
-        CurveMaxRangeText.Value = "10"
+        CurveMinRangeText.Value = tostring(MinRange)
+        CurveMaxRangeText.Value = tostring(MaxRange)
     end
 
     local function ReadCurveState()
@@ -437,7 +671,6 @@ function Interface:Init() : DockWidgetPluginGui
         end
     end
 
-    local COLOR_SEQUENCE_ATTRIBUTE = "EffectDesignerOklabColorSequence"
     local function DefaultColorSequencePoints()
         return {
             EffectOps.Color3ToOklabPoint(Color3.new(1, 1, 1), 0),
@@ -453,9 +686,9 @@ function Interface:Init() : DockWidgetPluginGui
 
     local function ReadColorSequenceState()
         local SourceInstance = nil
-        for _, Instance in States.CurrentlySelected.Value do
-            if HasColorSequence(Instance) then
-                SourceInstance = Instance
+        for _, instance in States.CurrentlySelected.Value do
+            if CanEditColorSequence(instance) then
+                SourceInstance = instance
                 break
             end
         end
@@ -478,20 +711,20 @@ function Interface:Init() : DockWidgetPluginGui
 
             if Success and typeof(Decoded) == "table" and #Decoded >= 2 and #Decoded <= 20 then
                 local Valid = true
-                for _, Point in Decoded do
-                    if typeof(Point) ~= "table"
-                        or typeof(Point.Time) ~= "number"
-                        or typeof(Point.L) ~= "number"
-                        or typeof(Point.A) ~= "number"
-                        or typeof(Point.B) ~= "number" then
+                for _, point in Decoded do
+                    if typeof(point) ~= "table"
+                        or typeof(point.Time) ~= "number"
+                        or typeof(point.L) ~= "number"
+                        or typeof(point.A) ~= "number"
+                        or typeof(point.B) ~= "number" then
                         Valid = false
                         break
                     end
                 end
 
                 if Valid then
-                    table.sort(Decoded, function(Left, Right)
-                        return Left.Time < Right.Time
+                    table.sort(Decoded, function(left, right)
+                        return left.Time < right.Time
                     end)
                     if Decoded[1].Time == 0 and Decoded[#Decoded].Time == 1 then
                         Points = Decoded
@@ -501,7 +734,16 @@ function Interface:Init() : DockWidgetPluginGui
         end
 
         if not Points then
-            Points = EffectOps.ReadOklabPointsFromColorSequence(SourceInstance.Color)
+            if HasColorSequence(SourceInstance) then
+                Points = EffectOps.ReadOklabPointsFromColorSequence(SourceInstance.Color)
+            elseif SourceInstance:IsA("BasePart") then
+                Points = {
+                    EffectOps.Color3ToOklabPoint(SourceInstance.Color, 0),
+                    EffectOps.Color3ToOklabPoint(SourceInstance.Color, 1),
+                }
+            else
+                Points = DefaultColorSequencePoints()
+            end
         end
 
         ColorSequencePoints.Value = Points
@@ -509,6 +751,8 @@ function Interface:Init() : DockWidgetPluginGui
 
     local PreviewPathsEnabled = Scope:Value(false)
     local InjectVfxApiEnabled = Scope:Value(false)
+    local WorldSpaceAccelEnabled = Scope:Value(false)
+    local IsSyncingWorldSpaceAccel = false
     local CopiedValue = Scope:Value(nil)
     local SelectedAsset = Scope:Value(nil)
     local SelectedAssetCategory = Scope:Value(nil)
@@ -525,7 +769,7 @@ function Interface:Init() : DockWidgetPluginGui
     })
 
     ColorPickerWidget = Scope:New(Jian.Widget, {
-        WidgetId = "EffectDesignerSuiteColorPicker",
+        WidgetId = COLOR_PICKER_WIDGET_ID,
         Title = "Color Picker",
         InitialDockState = Enum.InitialDockState.Float,
         InitialEnabled = false,
@@ -553,9 +797,9 @@ function Interface:Init() : DockWidgetPluginGui
         Size = UDim2.new(1, -24, 0, 20),
         AutomaticSize = Enum.AutomaticSize.None,
         TextXAlignment = Enum.TextXAlignment.Left,
-        Text = Scope:Computed(function(Use)
-            local Index = Use(ActiveColorPointIndex)
-            local Points = Use(ColorSequencePoints)
+        Text = Scope:Computed(function(use)
+            local Index = use(ActiveColorPointIndex)
+            local Points = use(ColorSequencePoints)
             local Point = Index and Points[Index] or nil
             return if Point then string.format("Point at %.3f", Point.Time) else "Select a color point"
         end),
@@ -567,13 +811,13 @@ function Interface:Init() : DockWidgetPluginGui
         Position = UDim2.fromOffset(12, 34),
         Size = UDim2.new(1, -24, 0, 198),
         Value = ColorPickerValue,
-        Active = Scope:Computed(function(Use)
-            return Use(ActiveColorPointIndex) ~= nil
+        Active = Scope:Computed(function(use)
+            return use(ActiveColorPointIndex) ~= nil
         end),
     })
 
-    local function SyncPickerFromPoint(Index)
-        local Point = Index and ColorSequencePoints.Value[Index] or nil
+    local function SyncPickerFromPoint(index)
+        local Point = index and ColorSequencePoints.Value[index] or nil
         if not Point then
             return
         end
@@ -614,6 +858,47 @@ function Interface:Init() : DockWidgetPluginGui
         },
     })
 
+    local UpdateWarningText = Scope:Value("")
+    Scope:New("TextLabel", {
+        Parent = Container,
+        LayoutOrder = -1,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Text = UpdateWarningText,
+        TextWrapped = true,
+        TextColor3 = Color3.fromRGB(255, 196, 72),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
+        Visible = Scope:Computed(function(use)
+            return use(UpdateWarningText) ~= ""
+        end),
+    })
+
+    task.spawn(function()
+        local RemoteVersion, PermissionDenied = FetchGitHubVersion()
+        if PermissionDenied then
+            UpdateWarningText.Value = HTTP_PERMISSION_WARNING
+            return
+        end
+
+        local LocalVersion = ReadLocalVersion()
+        if not LocalVersion or not RemoteVersion then
+            return
+        end
+
+        if IsRemoteVersionNewer(RemoteVersion, LocalVersion) then
+            UpdateWarningText.Value = string.format(
+                "Update available: %s (you have %s). Please update Effect Designer Suite.",
+                RemoteVersion,
+                LocalVersion
+            )
+        end
+    end)
+
     Scope:New(Jian.Text, {
         Parent = Container,
         Text = SelectionSummary,
@@ -625,7 +910,7 @@ function Interface:Init() : DockWidgetPluginGui
     })
 
     local AssetWidget = Scope:New(Jian.Widget, {
-        WidgetId = "EffectDesignerSuiteAssets",
+        WidgetId = ASSETS_WIDGET_ID,
         Title = "Asset Presets",
         InitialDockState = Enum.InitialDockState.Float,
         InitialEnabled = false,
@@ -732,8 +1017,8 @@ function Interface:Init() : DockWidgetPluginGui
 
     local AssetGridEmptyText = Scope:New(Jian.Text, {
         Parent = AssetGridFrame,
-        Text = Scope:Computed(function(Use)
-            if Use(SelectedAssetCategory) then
+        Text = Scope:Computed(function(use)
+            if use(SelectedAssetCategory) then
                 return ""
             end
 
@@ -776,8 +1061,8 @@ function Interface:Init() : DockWidgetPluginGui
     Scope:New(Jian.Text, {
         Parent = AssetPreviewPane,
         LayoutOrder = 1,
-        Text = Scope:Computed(function(Use)
-            local Asset = Use(SelectedAsset)
+        Text = Scope:Computed(function(use)
+            local Asset = use(SelectedAsset)
 
             if not Asset then
                 return "Select an asset preset"
@@ -804,8 +1089,8 @@ function Interface:Init() : DockWidgetPluginGui
     local RefreshSelectedAssetPreview
 
     local function ClearAssetGrid()
-        for _, Instance in AssetGridInstances do
-            Instance:Destroy()
+        for _, instance in AssetGridInstances do
+            instance:Destroy()
         end
 
         table.clear(AssetGridInstances)
@@ -813,6 +1098,7 @@ function Interface:Init() : DockWidgetPluginGui
 
     local function RefreshAssetGrid()
         ClearAssetGrid()
+        AssetGridFrame.CanvasPosition = Vector2.zero
 
         local Category = SelectedAssetCategory.Value
 
@@ -823,17 +1109,17 @@ function Interface:Init() : DockWidgetPluginGui
 
         AssetGridEmptyText.Visible = false
 
-        for AssetOrder, Asset in ipairs(AssetCatalog.AssetsByCategory[Category] or {}) do
+        for assetOrder, asset in ipairs(AssetCatalog.AssetsByCategory[Category] or {}) do
             local Card = CreateAssetCard(
                 Scope,
                 PreviewEntries,
-                Asset,
-                AssetOrder,
-                Scope:Computed(function(Use)
-                    return Use(SelectedAsset) == Asset
+                asset,
+                assetOrder,
+                Scope:Computed(function(use)
+                    return use(SelectedAsset) == asset
                 end),
-                function(NewAsset)
-                    SelectedAsset.Value = NewAsset
+                function(newAsset)
+                    SelectedAsset.Value = newAsset
                     RefreshSelectedAssetPreview()
                 end
             )
@@ -844,8 +1130,8 @@ function Interface:Init() : DockWidgetPluginGui
     end
 
     function RefreshSelectedAssetPreview()
-        for _, Child in PreviewFrameHost:GetChildren() do
-            Child:Destroy()
+        for _, child in PreviewFrameHost:GetChildren() do
+            child:Destroy()
         end
 
         table.clear(PreviewEntries)
@@ -865,8 +1151,8 @@ function Interface:Init() : DockWidgetPluginGui
         Position = UDim2.fromOffset(0, 226),
         Size = UDim2.new(1, 0, 0, 18),
         AutomaticSize = Enum.AutomaticSize.None,
-        Text = Scope:Computed(function(Use)
-            local Asset = Use(SelectedAsset)
+        Text = Scope:Computed(function(use)
+            local Asset = use(SelectedAsset)
 
             if not Asset then
                 return "Texture: -"
@@ -885,15 +1171,14 @@ function Interface:Init() : DockWidgetPluginGui
         Position = UDim2.fromOffset(0, 248),
         Size = UDim2.new(1, 0, 0, 18),
         AutomaticSize = Enum.AutomaticSize.None,
-        Text = Scope:Computed(function(Use)
-            local Asset = Use(SelectedAsset)
+        Text = Scope:Computed(function(use)
+            local Asset = use(SelectedAsset)
 
             if not Asset then
-                return "Flipbook: -"
+                return "Type: -"
             end
 
-            local GridSize = GetFlipbookGridSize(Asset.FlipbookType)
-            return string.format("Flipbook: %dx%d", GridSize, GridSize)
+            return "Type: " .. GetFlipbookTypeLabel(Asset.FlipbookType)
         end),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 12,
@@ -905,8 +1190,8 @@ function Interface:Init() : DockWidgetPluginGui
         Position = UDim2.fromOffset(0, 280),
         Size = UDim2.new(1, 0, 0, 32),
         Text = "Insert",
-        Active = Scope:Computed(function(Use)
-            return Use(SelectedAsset) ~= nil and Use(HasRawSelection)
+        Active = Scope:Computed(function(use)
+            return use(SelectedAsset) ~= nil and use(HasRawSelection)
         end),
         [Seam.OnEvent("Activated")] = function()
             local Asset = SelectedAsset.Value
@@ -924,8 +1209,8 @@ function Interface:Init() : DockWidgetPluginGui
         Position = UDim2.fromOffset(0, 320),
         Size = UDim2.new(1, 0, 0, 32),
         Text = "Replace",
-        Active = Scope:Computed(function(Use)
-            return Use(SelectedAsset) ~= nil and Use(HasReplaceTargets)
+        Active = Scope:Computed(function(use)
+            return use(SelectedAsset) ~= nil and use(HasReplaceTargets)
         end),
         [Seam.OnEvent("Activated")] = function()
             local Asset = SelectedAsset.Value
@@ -938,7 +1223,7 @@ function Interface:Init() : DockWidgetPluginGui
         end,
     })
 
-    function InsertAssetPreset(Asset)
+    function InsertAssetPreset(asset)
         local Target = ResolveParticleInsertParent(States.RawSelection.Value[1])
 
         if not Target then
@@ -946,12 +1231,12 @@ function Interface:Init() : DockWidgetPluginGui
         end
 
         local NewEmitter = Instance.new("ParticleEmitter")
-        NewEmitter.Name = string.format("%sPreset", Asset.Type)
+        NewEmitter.Name = string.format("%sPreset", asset.Type)
         NewEmitter.Size = NumberSequence.new(1)
         NewEmitter.Rate = 1
         NewEmitter.Lifetime = NumberRange.new(2, 2)
         NewEmitter.Enabled = true
-        ApplyAssetToTextureObject(Asset, NewEmitter)
+        ApplyAssetToTextureObject(asset, NewEmitter)
 
         local Success = pcall(function()
             NewEmitter.Parent = Target
@@ -962,29 +1247,29 @@ function Interface:Init() : DockWidgetPluginGui
             return
         end
 
-        Selection:Set({NewEmitter})
+        SelectionService:Set({NewEmitter})
     end
 
-    function ReplaceAssetPreset(Asset)
+    function ReplaceAssetPreset(asset)
         local Targets = {}
         local Seen = {}
 
-        for _, Instance in States.CurrentlySelected.Value do
-            if (Instance:IsA("ParticleEmitter") or Instance:IsA("Beam") or Instance:IsA("Trail")) and not Seen[Instance] then
-                Seen[Instance] = true
-                table.insert(Targets, Instance)
+        for _, instance in States.CurrentlySelected.Value do
+            if (instance:IsA("ParticleEmitter") or instance:IsA("Beam") or instance:IsA("Trail")) and not Seen[instance] then
+                Seen[instance] = true
+                table.insert(Targets, instance)
             end
         end
 
-        for _, Instance in States.RawSelection.Value do
-            if (Instance:IsA("ParticleEmitter") or Instance:IsA("Beam") or Instance:IsA("Trail")) and not Seen[Instance] then
-                Seen[Instance] = true
-                table.insert(Targets, Instance)
+        for _, instance in States.RawSelection.Value do
+            if (instance:IsA("ParticleEmitter") or instance:IsA("Beam") or instance:IsA("Trail")) and not Seen[instance] then
+                Seen[instance] = true
+                table.insert(Targets, instance)
             end
         end
 
-        for _, Instance in Targets do
-            ApplyAssetToTextureObject(Asset, Instance)
+        for _, instance in Targets do
+            ApplyAssetToTextureObject(asset, instance)
         end
     end
 
@@ -1000,18 +1285,18 @@ function Interface:Init() : DockWidgetPluginGui
             DefaultSelectedAsset = AssetCatalog.AssetsByCategory[AssetCatalog.Categories[1]][1]
         end
 
-        for CategoryOrder, Category in ipairs(AssetCatalog.Categories) do
+        for categoryOrder, category in ipairs(AssetCatalog.Categories) do
             local CategoryButton = Scope:New(Jian.TextButton, {
                 Parent = AssetNavigation,
-                LayoutOrder = CategoryOrder,
+                LayoutOrder = categoryOrder,
                 Size = UDim2.new(1, 0, 0, 30),
-                Text = string.format("%s (%d)", Category, #(AssetCatalog.AssetsByCategory[Category] or {})),
+                Text = string.format("%s (%d)", category, #(AssetCatalog.AssetsByCategory[category] or {})),
                 Active = true,
                 [Seam.OnEvent("Activated")] = function()
-                    SelectedAssetCategory.Value = Category
+                    SelectedAssetCategory.Value = category
 
-                    if not SelectedAsset.Value or SelectedAsset.Value.Type ~= Category then
-                        SelectedAsset.Value = (AssetCatalog.AssetsByCategory[Category] or {})[1]
+                    if not SelectedAsset.Value or SelectedAsset.Value.Type ~= category then
+                        SelectedAsset.Value = (AssetCatalog.AssetsByCategory[category] or {})[1]
                         RefreshSelectedAssetPreview()
                     end
 
@@ -1027,34 +1312,67 @@ function Interface:Init() : DockWidgetPluginGui
         IsAssetBrowserInitialized = true
     end
 
+    local function IsPreviewContentReady(entry)
+        if entry.Preloaded or entry.Image.IsLoaded then
+            return true
+        end
+
+        local Success, Status = pcall(function()
+            return ContentProvider:GetAssetFetchStatus(entry.ContentId)
+        end)
+
+        return Success and (Status == Enum.AssetFetchStatus.Success or Status == Enum.AssetFetchStatus.Failure)
+    end
+
     Scope:AddObject(RunService.RenderStepped:Connect(function()
         if not AssetWidget.Enabled then
             return
         end
 
+        for index = #PendingPreviewLoads, 1, -1 do
+            local Entry = PendingPreviewLoads[index]
+
+            if Entry.Image.Parent == nil then
+                table.remove(PendingPreviewLoads, index)
+            elseif IsPreviewContentReady(Entry) then
+                Entry.Indicator.Visible = false
+                Entry.Image.ImageTransparency = 0
+
+                if Entry.PreviewEntry then
+                    Entry.PreviewEntry.StartedAt = os.clock()
+                end
+
+                table.remove(PendingPreviewLoads, index)
+            end
+        end
+
         local Now = os.clock()
 
-        for _, Preview in PreviewEntries do
-            local FrameIndex = math.floor((Now - Preview.StartedAt) * Preview.FramesPerSecond) % Preview.TotalFrames
-            local Column = FrameIndex % Preview.GridSize
-            local Row = math.floor(FrameIndex / Preview.GridSize)
+        for _, preview in PreviewEntries do
+            if preview.Image.ImageTransparency ~= 0 then
+                continue
+            end
 
-            Preview.Image.Position = UDim2.fromScale(-Column, -Row)
+            local FrameIndex = math.floor((Now - preview.StartedAt) * preview.FramesPerSecond) % preview.TotalFrames
+            local Column = FrameIndex % preview.GridSize
+            local Row = math.floor(FrameIndex / preview.GridSize)
+
+            preview.Image.Position = UDim2.fromScale(-Column, -Row)
         end
     end))
 
-    local function CreateCorePropertyRow(LayoutOrder : number, LabelText : string, AttributeName : string, TextState)
-        local Row = CreateRow(Scope, LayoutOrder)
+    local function CreateCorePropertyRow(layoutOrder : number, labelText : string, attributeName : string, textState)
+        local Row = CreateRow(Scope, layoutOrder)
         local IsFocused = false
-        local FocusStartText = TextState.Value
+        local FocusStartText = textState.Value
         local IsDirty = false
 
-        CreateLabel(Scope, Row, LabelText)
+        CreateLabel(Scope, Row, labelText)
 
         local TextBox = CreateBoundTextBox(
             Scope,
             Row,
-            TextState,
+            textState,
             HasEditableSelection,
             "0",
             UDim2.fromScale(0.35, 0),
@@ -1089,15 +1407,15 @@ function Interface:Init() : DockWidgetPluginGui
                 return
             end
 
-            local Number = tonumber(TextState.Value)
+            local Number = tonumber(textState.Value)
 
             if not Number or Number == 0 then
                 IsDirty = false
                 return
             end
 
-            for _, Instance in CurrentlySelected do
-                Instance:SetAttribute(AttributeName, Number)
+            for _, instance in CurrentlySelected do
+                instance:SetAttribute(attributeName, Number)
             end
 
             IsDirty = false
@@ -1230,9 +1548,9 @@ function Interface:Init() : DockWidgetPluginGui
                 return
             end
 
-            for _, Instance in SelectedInstances do
+            for _, instance in SelectedInstances do
                 pcall(function()
-                    Instance[SelectedProperty] = Value
+                    instance[SelectedProperty] = Value
                 end)
             end
         end,
@@ -1282,11 +1600,11 @@ function Interface:Init() : DockWidgetPluginGui
         MathPropertyText.Value = PropertyMaps.NormalizeParticleProperty(MathPropertyText.Value)
     end))
 
-    local function RunMathOperation(Operation : string)
+    local function RunMathOperation(operation : string)
         local Value = MathAmountValue.Value
         local Property = PropertyMaps.NormalizeParticleProperty(MathPropertyText.Value)
 
-        EffectOps.ApplyMathOperation(Value, Property, Operation, States.CurrentlySelected.Value)
+        EffectOps.ApplyMathOperation(Value, Property, operation, States.CurrentlySelected.Value)
         MathPropertyText.Value = Property
     end
 
@@ -1359,13 +1677,20 @@ function Interface:Init() : DockWidgetPluginGui
         local NewSequence = EffectOps.BuildNumberSequenceFromCurve(CurvePoints.Value, MinRange, MaxRange)
 
                 local EncodedPoints = HttpService:JSONEncode(CurvePoints.Value)
-        for _, Instance in States.CurrentlySelected.Value do
-            pcall(function()
-                Instance[SelectedProperty] = NewSequence
-                Instance:SetAttribute(CurveAttributeName(SelectedProperty), EncodedPoints)
-                Instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MinRange"), MinRange)
-                Instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MaxRange"), MaxRange)
-            end)
+        for _, instance in States.CurrentlySelected.Value do
+            if instance:IsA("BasePart") then
+                PartAnimation.Ensure(instance, Bin)
+                instance:SetAttribute(CurveAttributeName(SelectedProperty), EncodedPoints)
+                instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MinRange"), MinRange)
+                instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MaxRange"), MaxRange)
+            else
+                pcall(function()
+                    instance[SelectedProperty] = NewSequence
+                    instance:SetAttribute(CurveAttributeName(SelectedProperty), EncodedPoints)
+                    instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MinRange"), MinRange)
+                    instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MaxRange"), MaxRange)
+                end)
+            end
         end
     end)
 
@@ -1375,12 +1700,12 @@ function Interface:Init() : DockWidgetPluginGui
         Points = ColorSequencePoints,
         ActivePointIndex = ActiveColorPointIndex,
         Active = HasColorSequenceSelection,
-        OnEditPoint = function(Index)
-            if not Index then
+        OnEditPoint = function(index)
+            if not index then
                 ColorPickerWidget.Enabled = false
                 return
             end
-            SyncPickerFromPoint(Index)
+            SyncPickerFromPoint(index)
             ColorPickerWidget.Enabled = true
         end,
     })
@@ -1389,12 +1714,15 @@ function Interface:Init() : DockWidgetPluginGui
         local NewSequence = EffectOps.BuildColorSequenceFromOklabPoints(ColorSequencePoints.Value)
         local EncodedPoints = HttpService:JSONEncode(ColorSequencePoints.Value)
 
-        for _, Instance in States.CurrentlySelected.Value do
-            if HasColorSequence(Instance) then
+        for _, instance in States.CurrentlySelected.Value do
+            if HasColorSequence(instance) then
                 pcall(function()
-                    Instance.Color = NewSequence
-                    Instance:SetAttribute(COLOR_SEQUENCE_ATTRIBUTE, EncodedPoints)
+                    instance.Color = NewSequence
+                    instance:SetAttribute(COLOR_SEQUENCE_ATTRIBUTE, EncodedPoints)
                 end)
+            elseif instance:IsA("BasePart") then
+                PartAnimation.Ensure(instance, Bin)
+                instance:SetAttribute(COLOR_SEQUENCE_ATTRIBUTE, EncodedPoints)
             end
         end
     end)
@@ -1407,7 +1735,7 @@ function Interface:Init() : DockWidgetPluginGui
         end
 
         local Indicator = EmitUtils:CreateNewAnimationIndicator(SelectedInstances[1], "Bezier")
-        Selection:Set({Indicator})
+        SelectionService:Set({Indicator})
     end)
 
     local CreateTweenAnimationButton = CreateActionButton(Scope, 3, "Create Tween Animation", HasRawSelection, function()
@@ -1418,7 +1746,7 @@ function Interface:Init() : DockWidgetPluginGui
         end
 
         local Indicator = EmitUtils:CreateNewAnimationIndicator(SelectedInstances[1], "Tween")
-        Selection:Set({Indicator})
+        SelectionService:Set({Indicator})
     end)
 
     local InsertPlayEffectModuleButton = CreateActionButton(Scope, 2, "Insert PlayEffect Module", HasRawSelection, function()
@@ -1428,9 +1756,18 @@ function Interface:Init() : DockWidgetPluginGui
             return
         end
 
+        VfxApiInjection.EnsureSharedModules(Bin)
+
+        local Parent = SelectedInstances[1]
+        local Existing = Parent:FindFirstChild("PlayEffect")
+        if Existing then
+            Existing:Destroy()
+        end
+
         local PlayEffectModule = Bin.PlaybackModules.PlayEffect:Clone()
-        PlayEffectModule.Parent = SelectedInstances[1]
-        Selection:Set({PlayEffectModule})
+        PlayEffectModule.Name = "PlayEffect"
+        PlayEffectModule.Parent = Parent
+        SelectionService:Set({PlayEffectModule})
     end)
 
     local InsertEffectModuleTemplateButton = CreateActionButton(Scope, 3, "Insert Effect Module Template", HasRawSelection, function()
@@ -1442,7 +1779,7 @@ function Interface:Init() : DockWidgetPluginGui
 
         local EffectModuleTemplate = Bin.PlaybackModules.EffectModuleTemplate:Clone()
         EffectModuleTemplate.Parent = SelectedInstances[1]
-        Selection:Set({EffectModuleTemplate})
+        SelectionService:Set({EffectModuleTemplate})
     end)
 
     local PreviewPathsCheckboxRow = CreateRow(Scope, 4)
@@ -1463,6 +1800,16 @@ function Interface:Init() : DockWidgetPluginGui
         Title = "Inject VFX API",
         Active = true,
         Value = InjectVfxApiEnabled,
+    })
+
+    local WorldSpaceAccelCheckboxRow = CreateRow(Scope, 6)
+    Scope:New(Jian.Checkbox, {
+        Parent = WorldSpaceAccelCheckboxRow,
+        Position = UDim2.fromOffset(0, 8),
+        Size = UDim2.new(1, 0, 0, 20),
+        Title = "World space acceleration for LockedToPart",
+        Active = HasParticleEmitterSelection,
+        Value = WorldSpaceAccelEnabled,
     })
 
     local OpenAssetPresetsButton = CreateActionButton(Scope, 2, "Presets", true, function()
@@ -1586,17 +1933,40 @@ function Interface:Init() : DockWidgetPluginGui
             InsertEffectModuleTemplateButton,
             PreviewPathsCheckboxRow,
             InjectApiCheckboxRow,
+            WorldSpaceAccelCheckboxRow,
         },
     })
+
+    local function RefreshWorldSpaceAccelCheckbox()
+        IsSyncingWorldSpaceAccel = true
+
+        local HasEnabled = false
+        local HasDisabled = false
+
+        for _, instance in States.CurrentlySelected.Value do
+            if instance:IsA("ParticleEmitter") then
+                if WorldSpaceAcceleration.IsEnabled(instance) then
+                    HasEnabled = true
+                else
+                    HasDisabled = true
+                end
+            end
+        end
+
+        WorldSpaceAccelEnabled.Value = HasEnabled and not HasDisabled
+        IsSyncingWorldSpaceAccel = false
+    end
 
     local function RefreshCoreFields()
         SyncSelectionAttribute(EmitCountText, "EmitCount")
         SyncSelectionAttribute(EmitDelayText, "EmitDelay")
         SyncSelectionAttribute(EmitDurationText, "EmitDuration")
+        RefreshWorldSpaceAccelCheckbox()
     end
 
     RefreshCoreFields()
     Scope:AddObject(Seam.OnChanged(States.PrimarySelected, RefreshCoreFields))
+    Scope:AddObject(Seam.OnChanged(States.CurrentlySelected, RefreshWorldSpaceAccelCheckbox))
     Scope:AddObject(Seam.OnChanged(States.RepeatEmitDelay, function()
         RepeatEmitDelayText.Value = tostring(States.RepeatEmitDelay.Value)
     end))
@@ -1615,6 +1985,17 @@ function Interface:Init() : DockWidgetPluginGui
             VfxApiInjection.Enable(Bin)
         else
             VfxApiInjection.Disable()
+        end
+    end))
+    Scope:AddObject(Seam.OnChanged(WorldSpaceAccelEnabled, function()
+        if IsSyncingWorldSpaceAccel then
+            return
+        end
+
+        for _, instance in States.CurrentlySelected.Value do
+            if instance:IsA("ParticleEmitter") then
+                WorldSpaceAcceleration.SetEnabled(instance, WorldSpaceAccelEnabled.Value)
+            end
         end
     end))
 

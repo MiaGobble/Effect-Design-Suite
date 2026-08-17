@@ -1,31 +1,17 @@
 -- Imports
 local Seam = require(script.Parent.Parent:FindFirstChild("Packages"):FindFirstChild("Seam"))
 
+-- Variables
 local Scope = Seam.Scope(Seam)
+local States = {}
 
+States.CurrentlySelected = Scope:Value({})
+States.RawSelection = Scope:Value({})
+States.IsEditable = Scope:Value(false)
+States.IsEmittable = Scope:Value(false)
+States.PrimarySelected = Scope:Value(nil)
+States.IsEffectModule = Scope:Value(false)
+States.RepeatEmit = Scope:Value(false)
+States.RepeatEmitDelay = Scope:Value(1)
 
-return {
-    -- The instances the current user has selected
-    CurrentlySelected = Scope:Value({}),
-
-    -- All selection
-    RawSelection = Scope:Value({}),
-
-    -- Whether in an editable state
-    IsEditable = Scope:Value(false),
-
-    -- Whether in an emittable state
-    IsEmittable = Scope:Value(false),
-
-    -- Primary selected instance, can only be one
-    PrimarySelected = Scope:Value(nil),
-
-    -- Whether the selected instance is an effect module
-    IsEffectModule = Scope:Value(false),
-
-    -- If repeat emit is on
-    RepeatEmit = Scope:Value(false),
-
-    -- Repeat emit delay
-    RepeatEmitDelay = Scope:Value(1),
-}
+return States

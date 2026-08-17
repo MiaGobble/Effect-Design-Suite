@@ -87,11 +87,6 @@ return {
 	{
 		Type = "Slash",
 		FlipbookType = 1,
-		TextureId = 1103706684359
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
 		TextureId = 14242056438
 	},
 	{
@@ -122,17 +117,7 @@ return {
 	{
 		Type = "Slash",
 		FlipbookType = 1,
-		TextureId = 110374862316
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
 		TextureId = 12402878232
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
-		TextureId = 1236366841017
 	},
 	{
 		Type = "Slash",
@@ -178,11 +163,6 @@ return {
 		Type = "Slash",
 		FlipbookType = 1,
 		TextureId = 11037067294
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
-		TextureId = 1236366863916
 	},
 	{
 		Type = "Slash",
@@ -462,17 +442,7 @@ return {
 	{
 		Type = "Slash",
 		FlipbookType = 1,
-		TextureId = 110375012366
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
 		TextureId = 10195815698
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
-		TextureId = 1103778223604
 	},
 	{
 		Type = "Slash",
@@ -592,11 +562,6 @@ return {
 	{
 		Type = "Slash",
 		FlipbookType = 1,
-		TextureId = 1.2389942313552362e29
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
 		TextureId = 16511969009
 	},
 	{
@@ -672,11 +637,6 @@ return {
 	{
 		Type = "Slash",
 		FlipbookType = 1,
-		TextureId = 177219758431
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
 		TextureId = 12506449597
 	},
 	{
@@ -718,11 +678,6 @@ return {
 		Type = "Slash",
 		FlipbookType = 1,
 		TextureId = 14734862876
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
-		TextureId = 1.2491910850625534e28
 	},
 	{
 		Type = "Slash",
@@ -777,11 +732,6 @@ return {
 	{
 		Type = "Slash",
 		FlipbookType = 1,
-		TextureId = 124919107033
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
 		TextureId = 17388365582
 	},
 	{
@@ -823,11 +773,6 @@ return {
 		Type = "Slash",
 		FlipbookType = 1,
 		TextureId = 13280151063
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
-		TextureId = 110370677931
 	},
 	{
 		Type = "Slash",
@@ -938,11 +883,6 @@ return {
 		Type = "Slash",
 		FlipbookType = 1,
 		TextureId = 11037068537
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 1,
-		TextureId = 110370689921
 	},
 	{
 		Type = "Slash",

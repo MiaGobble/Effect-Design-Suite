@@ -1,10 +1,6 @@
 local Dropdown = {}
 
-local Interface = script.Parent.Parent
-local Bin = Interface.Parent
-local Packages = Bin:FindFirstChild("Packages")
-local Seam = require(Packages:FindFirstChild("Seam"))
-
+-- Constants
 local CLOSED_HEIGHT = 36
 local ROW_HEIGHT = 30
 local MAX_LIST_HEIGHT = 220
@@ -18,63 +14,69 @@ local COLOR_TEXT_DISABLED = Color3.fromRGB(163, 163, 163)
 local COLOR_STROKE = Color3.fromRGB(40, 40, 40)
 local COLOR_STROKE_HOVER = Color3.fromRGB(60, 60, 60)
 
-local function ReadOptions(Source, Use)
-    if Use and typeof(Source) == "table" and Source.Value ~= nil then
-        local Value = Use(Source)
+-- Imports
+local Interface = script.Parent.Parent
+local Bin = Interface.Parent
+local Packages = Bin:FindFirstChild("Packages")
+local Seam = require(Packages:FindFirstChild("Seam"))
+
+local function ReadOptions(source, use)
+    if use and typeof(source) == "table" and source.Value ~= nil then
+        local Value = use(source)
         if typeof(Value) == "table" then
             return Value
         end
     end
 
-    if typeof(Source) == "table" and Source.Value ~= nil and typeof(Source.Value) == "table" then
-        return Source.Value
+    if typeof(source) == "table" and source.Value ~= nil and typeof(source.Value) == "table" then
+        return source.Value
     end
 
-    if typeof(Source) == "table" then
-        return Source
+    if typeof(source) == "table" then
+        return source
     end
 
     return {}
 end
 
-local function ReadActiveValue(ActiveProperty, Use)
-    if Use and typeof(ActiveProperty) == "table" and ActiveProperty.Value ~= nil then
-        return Use(ActiveProperty) == true
+local function ReadActiveValue(activeProperty, use)
+    if use and typeof(activeProperty) == "table" and activeProperty.Value ~= nil then
+        return use(activeProperty) == true
     end
 
-    if typeof(ActiveProperty) == "boolean" then
-        return ActiveProperty
+    if typeof(activeProperty) == "boolean" then
+        return activeProperty
     end
 
-    if typeof(ActiveProperty) == "table" and ActiveProperty.Value ~= nil then
-        return ActiveProperty.Value == true
+    if typeof(activeProperty) == "table" and activeProperty.Value ~= nil then
+        return activeProperty.Value == true
     end
 
-    return ActiveProperty ~= false
+    return activeProperty ~= false
 end
 
-function Dropdown:Init(Scope, Properties)
-    self.IsOpen = Scope:Value(false)
-    self.IsHovering = Scope:Value(false)
+function Dropdown:Init(scope, properties)
+    self.IsOpen = scope:Value(false)
+    self.IsHovering = scope:Value(false)
 
-    local Default = Properties.Default or ""
-    if Properties.Value and Properties.Value.Value == nil then
-        Properties.Value.Value = Default
+    local Default = properties.Default or ""
+    if properties.Value and properties.Value.Value == nil then
+        properties.Value.Value = Default
     end
 end
 
-function Dropdown:Construct(Scope, Properties)
-    local OptionsSource = Properties.Options or {}
+function Dropdown:Construct(scope, properties)
+    local OptionsSource = properties.Options or {}
 
-        local function IsEnabled(Use)
-        return ReadActiveValue(Properties.Active, Use) and #ReadOptions(OptionsSource, Use) > 0
+        local function IsEnabled(use)
+        return ReadActiveValue(properties.Active, use) and #ReadOptions(OptionsSource, use) > 0
     end
 
-    local Root = Scope:New("Frame", {
-        Parent = Properties.Parent,
-        LayoutOrder = Properties.LayoutOrder,
-        Position = Properties.Position,
-        AnchorPoint = Properties.AnchorPoint,
+    local Root = scope:New("Frame", {
+        Parent = properties.Parent,
+        LayoutOrder = properties.LayoutOrder,
+        Position = properties.Position,
+        AnchorPoint = properties.AnchorPoint,
         Size = UDim2.new(1, 0, 0, CLOSED_HEIGHT),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
@@ -82,7 +84,7 @@ function Dropdown:Construct(Scope, Properties)
         ZIndex = BASE_Z,
     })
 
-    local OverlayRoot = Scope:New("Frame", {
+    local OverlayRoot = scope:New("Frame", {
         Parent = Root,
         Name = "DropdownOverlay",
         BackgroundTransparency = 1,
@@ -94,16 +96,16 @@ function Dropdown:Construct(Scope, Properties)
         Visible = self.IsOpen,
     })
 
-    local Container = Scope:New("Frame", {
+    local Container = scope:New("Frame", {
         Parent = Root,
         Position = UDim2.fromOffset(0, 0),
         Size = UDim2.new(1, 0, 0, CLOSED_HEIGHT),
-                BackgroundColor3 = Scope:Computed(function(Use)
-            if not IsEnabled(Use) then
+                BackgroundColor3 = scope:Computed(function(use)
+            if not IsEnabled(use) then
                 return COLOR_BUTTON_DISABLED
             end
 
-            if Use(self.IsHovering) or Use(self.IsOpen) then
+            if use(self.IsHovering) or use(self.IsOpen) then
                 return COLOR_BUTTON_HOVER
             end
 
@@ -113,12 +115,12 @@ function Dropdown:Construct(Scope, Properties)
         ZIndex = BASE_Z + 1,
 
         [Seam.Children] = {
-            Scope:New("UICorner", {
+            scope:New("UICorner", {
                 CornerRadius = UDim.new(0, 6),
             }),
-            Scope:New("UIStroke", {
-                Color = Scope:Computed(function(Use)
-                    if Use(self.IsHovering) or Use(self.IsOpen) then
+            scope:New("UIStroke", {
+                Color = scope:Computed(function(use)
+                    if use(self.IsHovering) or use(self.IsOpen) then
                         return COLOR_STROKE_HOVER
                     end
 
@@ -129,25 +131,25 @@ function Dropdown:Construct(Scope, Properties)
         },
     })
 
-    Scope:New("TextLabel", {
+    scope:New("TextLabel", {
         Parent = Container,
         Position = UDim2.fromOffset(10, 0),
         Size = UDim2.new(1, -40, 1, 0),
         BackgroundTransparency = 1,
         FontFace = Font.fromEnum(Enum.Font.BuilderSans),
         TextSize = 14,
-                TextColor3 = Scope:Computed(function(Use)
-            if IsEnabled(Use) then
+                TextColor3 = scope:Computed(function(use)
+            if IsEnabled(use) then
                 return COLOR_TEXT
             end
 
             return COLOR_TEXT_DISABLED
         end),
         TextXAlignment = Enum.TextXAlignment.Left,
-        Text = Scope:Computed(function(Use)
-            local Current = Properties.Value and Use(Properties.Value) or ""
+        Text = scope:Computed(function(use)
+            local Current = properties.Value and use(properties.Value) or ""
             if Current == nil or Current == "" then
-                return Properties.PlaceholderText or "Select"
+                return properties.PlaceholderText or "Select"
             end
 
             return tostring(Current)
@@ -155,28 +157,28 @@ function Dropdown:Construct(Scope, Properties)
         ZIndex = BASE_Z + 2,
     })
 
-    Scope:New("TextLabel", {
+    scope:New("TextLabel", {
         Parent = Container,
         Position = UDim2.new(1, -26, 0, 0),
         Size = UDim2.fromOffset(20, CLOSED_HEIGHT),
         BackgroundTransparency = 1,
         FontFace = Font.fromEnum(Enum.Font.BuilderSans),
         TextSize = 15,
-                TextColor3 = Scope:Computed(function(Use)
-            if IsEnabled(Use) then
+                TextColor3 = scope:Computed(function(use)
+            if IsEnabled(use) then
                 return COLOR_TEXT
             end
 
             return COLOR_TEXT_DISABLED
         end),
         TextXAlignment = Enum.TextXAlignment.Center,
-        Text = Scope:Computed(function(Use)
-            return Use(self.IsOpen) and "▴" or "▾"
+        Text = scope:Computed(function(use)
+            return use(self.IsOpen) and "▴" or "▾"
         end),
         ZIndex = BASE_Z + 2,
     })
 
-    Scope:New("TextButton", {
+    scope:New("TextButton", {
         Parent = Container,
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
@@ -199,7 +201,7 @@ function Dropdown:Construct(Scope, Properties)
         end,
     })
 
-    local ListFrame = Scope:New("ScrollingFrame", {
+    local ListFrame = scope:New("ScrollingFrame", {
         Parent = OverlayRoot,
         Position = UDim2.fromOffset(0, CLOSED_HEIGHT + 5),
         Size = UDim2.fromScale(1, 0),
@@ -216,20 +218,20 @@ function Dropdown:Construct(Scope, Properties)
         ZIndex = BASE_Z + 10,
 
         [Seam.Children] = {
-            Scope:New("UICorner", {
+            scope:New("UICorner", {
                 CornerRadius = UDim.new(0, 6),
             }),
-            Scope:New("UIStroke", {
+            scope:New("UIStroke", {
                 Color = COLOR_STROKE_HOVER,
                 Thickness = 1,
             }),
-            Scope:New("UIPadding", {
+            scope:New("UIPadding", {
                 PaddingTop = UDim.new(0, 4),
                 PaddingBottom = UDim.new(0, 4),
                 PaddingLeft = UDim.new(0, 4),
                 PaddingRight = UDim.new(0, 4),
             }),
-            Scope:New("UIListLayout", {
+            scope:New("UIListLayout", {
                 FillDirection = Enum.FillDirection.Vertical,
                 SortOrder = Enum.SortOrder.LayoutOrder,
                 Padding = UDim.new(0, 4),
@@ -238,9 +240,9 @@ function Dropdown:Construct(Scope, Properties)
     })
 
     local function ClearRows()
-        for _, Child in ListFrame:GetChildren() do
-            if Child:IsA("GuiButton") and Child.Name == "OptionRow" then
-                Child:Destroy()
+        for _, child in ListFrame:GetChildren() do
+            if child:IsA("GuiButton") and child.Name == "OptionRow" then
+                child:Destroy()
             end
         end
     end
@@ -279,18 +281,18 @@ function Dropdown:Construct(Scope, Properties)
         ClearRows()
 
         local Options = ReadOptions(OptionsSource)
-        for Index, Option in ipairs(Options) do
-            local OptionText = tostring(Option)
-            local IsHover = Scope:Value(false)
+        for index, option in ipairs(Options) do
+            local OptionText = tostring(option)
+            local IsHover = scope:Value(false)
 
-            Scope:New("TextButton", {
+            scope:New("TextButton", {
                 Parent = ListFrame,
                 Name = "OptionRow",
-                LayoutOrder = Index,
+                LayoutOrder = index,
                 Size = UDim2.new(1, 0, 0, ROW_HEIGHT),
                 BorderSizePixel = 0,
-                BackgroundColor3 = Scope:Computed(function(Use)
-                    if Use(IsHover) then
+                BackgroundColor3 = scope:Computed(function(use)
+                    if use(IsHover) then
                         return COLOR_BUTTON_HOVER
                     end
 
@@ -306,10 +308,10 @@ function Dropdown:Construct(Scope, Properties)
                 ZIndex = BASE_Z + 11,
 
                 [Seam.Children] = {
-                    Scope:New("UICorner", {
+                    scope:New("UICorner", {
                         CornerRadius = UDim.new(0, 4),
                     }),
-                    Scope:New("UIStroke", {
+                    scope:New("UIStroke", {
                         Color = COLOR_STROKE,
                         Thickness = 1,
                     }),
@@ -326,8 +328,8 @@ function Dropdown:Construct(Scope, Properties)
                         return
                     end
 
-                    if Properties.Value then
-                        Properties.Value.Value = OptionText
+                    if properties.Value then
+                        properties.Value.Value = OptionText
                     end
 
                     self.IsOpen.Value = false
@@ -338,17 +340,17 @@ function Dropdown:Construct(Scope, Properties)
         RefreshLayout()
     end
 
-    Scope:AddObject(Seam.OnChanged(self.IsOpen, function()
+    scope:AddObject(Seam.OnChanged(self.IsOpen, function()
         OverlayRoot.Visible = self.IsOpen.Value
         ListFrame.Visible = self.IsOpen.Value
         RefreshLayout()
     end))
 
-    Scope:AddObject(Root:GetPropertyChangedSignal("AbsolutePosition"):Connect(RefreshLayout))
-    Scope:AddObject(Root:GetPropertyChangedSignal("AbsoluteSize"):Connect(RefreshLayout))
+    scope:AddObject(Root:GetPropertyChangedSignal("AbsolutePosition"):Connect(RefreshLayout))
+    scope:AddObject(Root:GetPropertyChangedSignal("AbsoluteSize"):Connect(RefreshLayout))
 
     if typeof(OptionsSource) == "table" and OptionsSource.Value ~= nil then
-        Scope:AddObject(Seam.OnChanged(OptionsSource, function()
+        scope:AddObject(Seam.OnChanged(OptionsSource, function()
             RenderRows()
         end))
     end

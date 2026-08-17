@@ -7,11 +7,13 @@ local ACCEPTABLE_INSTANCE_TYPES = {
     "StringValue",
     "Trail",
 }
+local TOOLBAR_NAME = "Effect Designer Suite"
+local TOOLBAR_BUTTON_NAME = "Open"
+local TOOLBAR_BUTTON_IMAGE = "rbxassetid://140043496156959"
 
 -- Services
 local SelectionService = game:GetService("Selection") :: Selection
 local RunService = game:GetService("RunService")
-
 
 -- Imports
 local Objects = script.Parent:FindFirstChild("Objects")
@@ -22,17 +24,15 @@ local Packages = script.Parent:FindFirstChild("Packages")
 local Seam = require(Packages:FindFirstChild("Seam"))
 local Jian = require(Packages:FindFirstChild("Jian"))
 
-local Scope = Seam.Scope(Seam)
-
 -- Variables
+local Scope = Seam.Scope(Seam)
 local ThisToolbar = Scope:New(Jian.Toolbar, {
-    Name = "Effect Designer Suite",
+    Name = TOOLBAR_NAME,
 })
-
 local MainButton = Scope:New(Jian.ToolbarButton, {
     ToolTip = "",
-    Name = "Open",
-    Image = "rbxassetid://140043496156959",
+    Name = TOOLBAR_BUTTON_NAME,
+    Image = TOOLBAR_BUTTON_IMAGE,
     Toolbar = ThisToolbar,
 }) :: PluginToolbarButton
 
@@ -54,22 +54,26 @@ local function Init()
         local SelectedInstances = SelectionService:Get()
         local ValidInstances = {}
 
-        for _, This : Instance in SelectedInstances do
-            if table.find(ACCEPTABLE_INSTANCE_TYPES, This.ClassName) then
-                table.insert(ValidInstances, This)
+        for _, selected : Instance in SelectedInstances do
+            if table.find(ACCEPTABLE_INSTANCE_TYPES, selected.ClassName) then
+                table.insert(ValidInstances, selected)
                 continue
             end
 
-            for _, SubInstance : Instance in This:GetDescendants() do
-                if table.find(ACCEPTABLE_INSTANCE_TYPES, SubInstance.ClassName) then
-                    table.insert(ValidInstances, SubInstance)
+            if selected:IsA("BasePart") then
+                table.insert(ValidInstances, selected)
+            end
+
+            for _, subInstance : Instance in selected:GetDescendants() do
+                if table.find(ACCEPTABLE_INSTANCE_TYPES, subInstance.ClassName) then
+                    table.insert(ValidInstances, subInstance)
                 end
             end
         end
 
-        States.CurrentlySelected.Value = ValidInstances
-        States.IsEditable.Value = #ValidInstances == 1
         States.IsEmittable.Value = #ValidInstances >= 1
+        States.IsEditable.Value = #ValidInstances == 1
+        States.CurrentlySelected.Value = ValidInstances
         States.PrimarySelected.Value = if #ValidInstances == 1 then ValidInstances[1] else nil
         States.RawSelection.Value = SelectedInstances or {}
 

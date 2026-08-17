@@ -997,11 +997,6 @@ return {
 	{
 		Type = "Burst",
 		FlipbookType = 4,
-		TextureId = 9358186152
-	},
-	{
-		Type = "Burst",
-		FlipbookType = 4,
 		TextureId = 16924852505
 	},
 	{
@@ -1402,11 +1397,6 @@ return {
 	{
 		Type = "Burst",
 		FlipbookType = 4,
-		TextureId = 17170339044
-	},
-	{
-		Type = "Burst",
-		FlipbookType = 4,
 		TextureId = 124749291708895
 	},
 	{
@@ -1428,11 +1418,6 @@ return {
 		Type = "Burst",
 		FlipbookType = 4,
 		TextureId = 135971617705259
-	},
-	{
-		Type = "Burst",
-		FlipbookType = 4,
-		TextureId = 128488005243516
 	},
 	{
 		Type = "Burst",
@@ -1508,11 +1493,6 @@ return {
 		Type = "Burst",
 		FlipbookType = 4,
 		TextureId = 13724252630
-	},
-	{
-		Type = "Burst",
-		FlipbookType = 4,
-		TextureId = 13378717718
 	},
 	{
 		Type = "Burst",
@@ -1603,11 +1583,6 @@ return {
 		Type = "Burst",
 		FlipbookType = 4,
 		TextureId = 80984861895301
-	},
-	{
-		Type = "Burst",
-		FlipbookType = 4,
-		TextureId = 129596865128056
 	},
 	{
 		Type = "Burst",
@@ -1703,11 +1678,6 @@ return {
 		Type = "Burst",
 		FlipbookType = 4,
 		TextureId = 9173514669
-	},
-	{
-		Type = "Burst",
-		FlipbookType = 4,
-		TextureId = 136104048569538
 	},
 	{
 		Type = "Burst",
@@ -1892,11 +1862,6 @@ return {
 	{
 		Type = "Burst",
 		FlipbookType = 4,
-		TextureId = 16924773089
-	},
-	{
-		Type = "Burst",
-		FlipbookType = 4,
 		TextureId = 13795988483
 	},
 	{
@@ -1918,11 +1883,6 @@ return {
 		Type = "Burst",
 		FlipbookType = 4,
 		TextureId = 15755035567
-	},
-	{
-		Type = "Burst",
-		FlipbookType = 4,
-		TextureId = 139595561786039
 	},
 	{
 		Type = "Burst",

@@ -772,11 +772,6 @@ return {
 	{
 		Type = "Fog",
 		FlipbookType = 4,
-		TextureId = 122998470311820
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
 		TextureId = 73401369007395
 	},
 	{
@@ -793,16 +788,6 @@ return {
 		Type = "Fog",
 		FlipbookType = 4,
 		TextureId = 13989966715
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
-		TextureId = 112418500538896
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
-		TextureId = 90967051533696
 	},
 	{
 		Type = "Fog",
@@ -903,11 +888,6 @@ return {
 		Type = "Fog",
 		FlipbookType = 4,
 		TextureId = 76204681346241
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
-		TextureId = 80765513197269
 	},
 	{
 		Type = "Fog",
@@ -1112,22 +1092,12 @@ return {
 	{
 		Type = "Fog",
 		FlipbookType = 4,
-		TextureId = 112257070946542
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
 		TextureId = 84810509846193
 	},
 	{
 		Type = "Fog",
 		FlipbookType = 4,
 		TextureId = 12437246241
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
-		TextureId = 15554710287
 	},
 	{
 		Type = "Fog",
@@ -1158,11 +1128,6 @@ return {
 		Type = "Fog",
 		FlipbookType = 4,
 		TextureId = 16924888769
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
-		TextureId = 14248840306
 	},
 	{
 		Type = "Fog",
@@ -1247,11 +1212,6 @@ return {
 	{
 		Type = "Fog",
 		FlipbookType = 4,
-		TextureId = 100300862060592
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
 		TextureId = 110549281481684
 	},
 	{
@@ -1307,11 +1267,6 @@ return {
 	{
 		Type = "Fog",
 		FlipbookType = 4,
-		TextureId = 16504340270
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
 		TextureId = 16509852217
 	},
 	{
@@ -1337,11 +1292,6 @@ return {
 	{
 		Type = "Fog",
 		FlipbookType = 4,
-		TextureId = 17517672182
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
 		TextureId = 14279261803
 	},
 	{
@@ -1362,22 +1312,12 @@ return {
 	{
 		Type = "Fog",
 		FlipbookType = 4,
-		TextureId = 81276431283103
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
 		TextureId = 16860461660
 	},
 	{
 		Type = "Fog",
 		FlipbookType = 4,
 		TextureId = 14061881951
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
-		TextureId = 14061881330
 	},
 	{
 		Type = "Fog",
@@ -1393,11 +1333,6 @@ return {
 		Type = "Fog",
 		FlipbookType = 4,
 		TextureId = 15415212938
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
-		TextureId = 136193064623289
 	},
 	{
 		Type = "Fog",
@@ -1423,16 +1358,6 @@ return {
 		Type = "Fog",
 		FlipbookType = 4,
 		TextureId = 78536095614807
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
-		TextureId = 106157690415710
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
-		TextureId = 16924761676
 	},
 	{
 		Type = "Fog",
@@ -1592,11 +1517,6 @@ return {
 	{
 		Type = "Fog",
 		FlipbookType = 4,
-		TextureId = 94601268312605
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
 		TextureId = 17000893814
 	},
 	{
@@ -1637,11 +1557,6 @@ return {
 	{
 		Type = "Fog",
 		FlipbookType = 4,
-		TextureId = 92427851056021
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
 		TextureId = 13052525496
 	},
 	{
@@ -1663,11 +1578,6 @@ return {
 		Type = "Fog",
 		FlipbookType = 4,
 		TextureId = 17703378809
-	},
-	{
-		Type = "Fog",
-		FlipbookType = 4,
-		TextureId = 16978713087
 	},
 	{
 		Type = "Fog",

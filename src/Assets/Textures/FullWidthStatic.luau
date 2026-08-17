@@ -77,11 +77,6 @@ return {
 	{
 		Type = "FullWidth",
 		FlipbookType = 1,
-		TextureId = 110371712913
-	},
-	{
-		Type = "FullWidth",
-		FlipbookType = 1,
 		TextureId = 9031170095
 	},
 	{
@@ -118,16 +113,6 @@ return {
 		Type = "FullWidth",
 		FlipbookType = 1,
 		TextureId = 268548709
-	},
-	{
-		Type = "FullWidth",
-		FlipbookType = 1,
-		TextureId = 110371732891
-	},
-	{
-		Type = "FullWidth",
-		FlipbookType = 1,
-		TextureId = 110371723242
 	},
 	{
 		Type = "FullWidth",

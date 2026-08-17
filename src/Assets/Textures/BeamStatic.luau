@@ -92,11 +92,6 @@ return {
 	{
 		Type = "Beam",
 		FlipbookType = 1,
-		TextureId = 1271336085124
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
 		TextureId = 12347774081
 	},
 	{
@@ -183,11 +178,6 @@ return {
 		Type = "Beam",
 		FlipbookType = 1,
 		TextureId = 17476697388
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
-		TextureId = 123638616451
 	},
 	{
 		Type = "Beam",
@@ -317,11 +307,6 @@ return {
 	{
 		Type = "Beam",
 		FlipbookType = 1,
-		TextureId = 123638612163
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
 		TextureId = 15122455492
 	},
 	{
@@ -403,11 +388,6 @@ return {
 		Type = "Beam",
 		FlipbookType = 1,
 		TextureId = 13526801263
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
-		TextureId = 127133605672
 	},
 	{
 		Type = "Beam",
@@ -658,11 +638,6 @@ return {
 		Type = "Beam",
 		FlipbookType = 1,
 		TextureId = 9930742228
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
-		TextureId = 1236385799810
 	},
 	{
 		Type = "Beam",
@@ -992,11 +967,6 @@ return {
 	{
 		Type = "Beam",
 		FlipbookType = 1,
-		TextureId = 123638609944
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
 		TextureId = 7216979919
 	},
 	{
@@ -1322,11 +1292,6 @@ return {
 	{
 		Type = "Beam",
 		FlipbookType = 1,
-		TextureId = 123638601118
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
 		TextureId = 16511723109
 	},
 	{
@@ -1612,11 +1577,6 @@ return {
 	{
 		Type = "Beam",
 		FlipbookType = 1,
-		TextureId = 123638613982
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
 		TextureId = 11744201766
 	},
 	{
@@ -1663,11 +1623,6 @@ return {
 		Type = "Beam",
 		FlipbookType = 1,
 		TextureId = 13280245934
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
-		TextureId = 123638582249
 	},
 	{
 		Type = "Beam",
@@ -1782,11 +1737,6 @@ return {
 	{
 		Type = "Beam",
 		FlipbookType = 1,
-		TextureId = 123638602897
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
 		TextureId = 16616702945
 	},
 	{
@@ -1858,11 +1808,6 @@ return {
 		Type = "Beam",
 		FlipbookType = 1,
 		TextureId = 15270687013
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
-		TextureId = 127133585259
 	},
 	{
 		Type = "Beam",
@@ -1948,11 +1893,6 @@ return {
 		Type = "Beam",
 		FlipbookType = 1,
 		TextureId = 18453651571
-	},
-	{
-		Type = "Beam",
-		FlipbookType = 1,
-		TextureId = 123638607265
 	},
 	{
 		Type = "Beam",

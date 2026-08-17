@@ -20,70 +20,70 @@ local Seam = require(Packages:FindFirstChild("Seam"))
 -- Variables
 local Plugin = script:FindFirstAncestorWhichIsA("Plugin") :: Plugin
 
-local function DeepCopyTableAsPeeked(Table : {[any] : any})
+local function DeepCopyTableAsPeeked(sourceTable : {[any] : any})
     local Copy = {}
 
-    for Key, Value in Table do
-        if typeof(Value) == "table" then
-            if Seam.IsState(Value) then
-                Copy[Key] = Seam.GetValue(Value)
+    for key, value in sourceTable do
+        if typeof(value) == "table" then
+            if Seam.IsState(value) then
+                Copy[key] = Seam.GetValue(value)
             else
-                Copy[Key] = DeepCopyTableAsPeeked(Value)
+                Copy[key] = DeepCopyTableAsPeeked(value)
             end
         else
-            Copy[Key] = Value
+            Copy[key] = value
         end
     end
 
     return Copy
 end
 
-local function DeepCopyTableAsStated(Table : {[any] : any})
+local function DeepCopyTableAsStated(sourceTable : {[any] : any})
     local Copy = {}
 
-    for Key, Value in Table do
-        if typeof(Value) == "table" then
-            if Seam.IsState(Value) then
-                Copy[Key] = Value
+    for key, value in sourceTable do
+        if typeof(value) == "table" then
+            if Seam.IsState(value) then
+                Copy[key] = value
             else
-                Copy[Key] = DeepCopyTableAsStated(Value)
+                Copy[key] = DeepCopyTableAsStated(value)
             end
         else
-            Copy[Key] = Value
+            Copy[key] = value
         end
     end
 
     return Copy
 end
 
-local function GetUnprocessedValue(Index : string, Value : any?)
-    local DefaultValue = Seam.GetValue(States[Index])
+local function GetUnprocessedValue(index : string, value : any?)
+    local DefaultValue = Seam.GetValue(States[index])
 
-    if Value == nil then
+    if value == nil then
         return DefaultValue
     end
 
     local Success, Decoded = pcall(function()
-        if typeof(Value) ~= "string" then
-            return Value
+        if typeof(value) ~= "string" then
+            return value
         end
 
-        return HttpService:JSONDecode(Value)
+        return HttpService:JSONDecode(value)
     end)
 
     if Success then
         return Decoded
     end
 
-    return Value
+    return value
 end
 
-local function GetProcessedValue(_Index : string, Value : any?)
-    if Value == nil then
+local function GetProcessedValue(_Index : string, value : any?)
+    if value == nil then
         return
     end
 
-    local RawValue = Seam.GetValue(Value)
+    local RawValue = Seam.GetValue(value)
 
     if typeof(RawValue) == "table" then
         local NewValue = DeepCopyTableAsPeeked(RawValue)
@@ -95,38 +95,38 @@ local function GetProcessedValue(_Index : string, Value : any?)
     return RawValue
 end
 
-local function ProcessState(StateId : string, StateValue : any)
-    local SavedSettingRawValue = Plugin:GetSetting(SETTING_INDEX_PRESET .. StateId)
+local function ProcessState(stateId : string, stateValue : any)
+    local SavedSettingRawValue = Plugin:GetSetting(SETTING_INDEX_PRESET .. stateId)
 
     if SavedSettingRawValue ~= nil then
-        local UnprocessedValue = GetUnprocessedValue(StateId, SavedSettingRawValue)
+        local UnprocessedValue = GetUnprocessedValue(stateId, SavedSettingRawValue)
 
         if typeof(UnprocessedValue) == "table" then
             local NewValue = DeepCopyTableAsStated(UnprocessedValue)
-            States[StateId].Value = NewValue
+            States[stateId].Value = NewValue
         else
-            States[StateId].Value = UnprocessedValue
+            States[stateId].Value = UnprocessedValue
         end
     end
 
-    Seam.OnChanged(StateValue, function()
-        local NewValue = Seam.GetValue(StateValue)
-        local ProcessedValue = GetProcessedValue(StateId, NewValue)
+    Seam.OnChanged(stateValue, function()
+        local NewValue = Seam.GetValue(stateValue)
+        local ProcessedValue = GetProcessedValue(stateId, NewValue)
 
-        Plugin:SetSetting(SETTING_INDEX_PRESET .. StateId, ProcessedValue)
+        Plugin:SetSetting(SETTING_INDEX_PRESET .. stateId, ProcessedValue)
     end)
 end
 
 function StateOutput:Init()
-    for _, StateId  in SAVED_STATES do
-        local StateValue = States[StateId]
+    for _, stateId  in SAVED_STATES do
+        local StateValue = States[stateId]
 
         if not StateValue then
-            warn("StateOutput:Init() - StateValue is nil for state: " .. StateId)
+            warn(`StateOutput:Init() - StateValue is nil for state: {stateId} {debug.traceback()}`)
             continue
         end
 
-        ProcessState(StateId, StateValue)
+        ProcessState(stateId, StateValue)
     end
 end
 
