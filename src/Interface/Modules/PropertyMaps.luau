@@ -67,6 +67,10 @@ PropertyMaps.CURVE_PROPERTIES_BY_CLASS = {
         "WidthScale",
     },
     Attachment = {},
+    BasePart = {
+        "Transparency",
+        "Scale",
+    },
 }
 
 function PropertyMaps.NormalizeParticleProperty(PropertyName : string)
@@ -90,6 +94,14 @@ function PropertyMaps.GetSelectionClass(Instances : {Instance})
 
     if PropertyMaps.COPY_PROPERTIES_BY_CLASS[First.ClassName] then
         return First.ClassName
+    end
+
+    if PropertyMaps.CURVE_PROPERTIES_BY_CLASS[First.ClassName] then
+        return First.ClassName
+    end
+
+    if First:IsA("BasePart") then
+        return "BasePart"
     end
 
     return nil

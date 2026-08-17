@@ -19,6 +19,7 @@ local PropertyMaps = require(Modules:FindFirstChild("PropertyMaps"))
 local EffectOps = require(Modules:FindFirstChild("EffectOps"))
 local VfxApiInjection = require(Modules:FindFirstChild("VfxApiInjection"))
 local WorldSpaceAcceleration = require(Modules:FindFirstChild("WorldSpaceAcceleration"))
+local PartAnimation = require(Modules:FindFirstChild("PartAnimation"))
 local Dropdown = require(Components:FindFirstChild("Dropdown"))
 local SliderInput = require(Components:FindFirstChild("SliderInput"))
 local CurveEditor = require(Components:FindFirstChild("CurveEditor"))
@@ -474,9 +475,13 @@ function Interface:Init() : DockWidgetPluginGui
         return Success and typeof(Value) == "ColorSequence"
     end
 
+    local function CanEditColorSequence(Instance)
+        return HasColorSequence(Instance) or Instance:IsA("BasePart")
+    end
+
     local HasColorSequenceSelection = Scope:Computed(function(Use)
         for _, Instance in Use(States.CurrentlySelected) do
-            if HasColorSequence(Instance) then
+            if CanEditColorSequence(Instance) then
                 return true
             end
         end
@@ -563,11 +568,21 @@ function Interface:Init() : DockWidgetPluginGui
             return CurveAttributeName(Property) .. "_" .. Suffix
         end
 
+    local function GetDefaultCurveRange(Property : string)
+        if Property == "Transparency" or Property == "Scale" then
+            return 0, 1
+        end
+
+        return 0, 10
+    end
+
     local function ResetCurveState()
+        local MinRange, MaxRange = GetDefaultCurveRange(CurvePropertyText.Value)
+        local DefaultValue = if CurvePropertyText.Value == "Scale" then 1 else 0.5
         CurvePoints.Value = {
             {
                 Time = 0,
-                Value = 0.5,
+                Value = DefaultValue,
                 InHandleX = 0,
                 InHandleY = 0,
                 OutHandleX = 0,
@@ -575,15 +590,15 @@ function Interface:Init() : DockWidgetPluginGui
             },
             {
                 Time = 1,
-                Value = 0.5,
+                Value = DefaultValue,
                 InHandleX = 0,
                 InHandleY = 0,
                 OutHandleX = 0,
                 OutHandleY = 0,
             },
         }
-        CurveMinRangeText.Value = "0"
-        CurveMaxRangeText.Value = "10"
+        CurveMinRangeText.Value = tostring(MinRange)
+        CurveMaxRangeText.Value = tostring(MaxRange)
     end
 
     local function ReadCurveState()
@@ -647,7 +662,7 @@ function Interface:Init() : DockWidgetPluginGui
     local function ReadColorSequenceState()
         local SourceInstance = nil
         for _, Instance in States.CurrentlySelected.Value do
-            if HasColorSequence(Instance) then
+            if CanEditColorSequence(Instance) then
                 SourceInstance = Instance
                 break
             end
@@ -694,7 +709,16 @@ function Interface:Init() : DockWidgetPluginGui
         end
 
         if not Points then
-            Points = EffectOps.ReadOklabPointsFromColorSequence(SourceInstance.Color)
+            if HasColorSequence(SourceInstance) then
+                Points = EffectOps.ReadOklabPointsFromColorSequence(SourceInstance.Color)
+            elseif SourceInstance:IsA("BasePart") then
+                Points = {
+                    EffectOps.Color3ToOklabPoint(SourceInstance.Color, 0),
+                    EffectOps.Color3ToOklabPoint(SourceInstance.Color, 1),
+                }
+            else
+                Points = DefaultColorSequencePoints()
+            end
         end
 
         ColorSequencePoints.Value = Points
@@ -1629,12 +1653,19 @@ function Interface:Init() : DockWidgetPluginGui
 
                 local EncodedPoints = HttpService:JSONEncode(CurvePoints.Value)
         for _, Instance in States.CurrentlySelected.Value do
-            pcall(function()
-                Instance[SelectedProperty] = NewSequence
+            if Instance:IsA("BasePart") then
+                PartAnimation.Ensure(Instance, Bin)
                 Instance:SetAttribute(CurveAttributeName(SelectedProperty), EncodedPoints)
                 Instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MinRange"), MinRange)
                 Instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MaxRange"), MaxRange)
-            end)
+            else
+                pcall(function()
+                    Instance[SelectedProperty] = NewSequence
+                    Instance:SetAttribute(CurveAttributeName(SelectedProperty), EncodedPoints)
+                    Instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MinRange"), MinRange)
+                    Instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MaxRange"), MaxRange)
+                end)
+            end
         end
     end)
 
@@ -1664,6 +1695,9 @@ function Interface:Init() : DockWidgetPluginGui
                     Instance.Color = NewSequence
                     Instance:SetAttribute(COLOR_SEQUENCE_ATTRIBUTE, EncodedPoints)
                 end)
+            elseif Instance:IsA("BasePart") then
+                PartAnimation.Ensure(Instance, Bin)
+                Instance:SetAttribute(COLOR_SEQUENCE_ATTRIBUTE, EncodedPoints)
             end
         end
     end)

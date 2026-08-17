@@ -218,56 +218,135 @@ local function AnimateBezier(ParentAttachment : Attachment)
     return GetTimeFromTweenInfo(TweenStyle)
 end
 
+local PART_ANIMATION_REFERENCE = "EffectDesignerAnimation"
+local PART_ANIMATION_MODULE = "EDSPartAnimation"
+
+local function GetCanonicalPartAnimationModule(Fallback : ModuleScript?)
+    local Sibling = script.Parent and script.Parent:FindFirstChild("PartAnimation")
+    if Sibling and Sibling:IsA("ModuleScript") then
+        return Sibling
+    end
+
+    local Shared = game:GetService("ReplicatedStorage"):FindFirstChild("EffectDesignerSuite")
+    if Shared then
+        local Found = Shared:FindFirstChild("PartAnimation")
+        if Found and Found:IsA("ModuleScript") then
+            return Found
+        end
+    end
+
+    return Fallback
+end
+
+local function ResolvePartAnimationModule(Part : Instance)
+    local Reference = Part:FindFirstChild(PART_ANIMATION_REFERENCE)
+    if Reference and Reference:IsA("ObjectValue") and Reference.Value and Reference.Value:IsA("ModuleScript") then
+        return Reference.Value
+    end
+
+    local Child = Part:FindFirstChild(PART_ANIMATION_MODULE)
+    if Child and Child:IsA("ModuleScript") then
+        return Child
+    end
+
+    return nil
+end
+
+local function IsPartAnimationModule(This : Instance)
+    local Parent = This.Parent
+    if not Parent or not Parent:IsA("BasePart") then
+        return false
+    end
+
+    return ResolvePartAnimationModule(Parent) == This
+end
+
+local function PlayVisualEffectModule(ModuleScript : ModuleScript, Parent : Instance) : number?
+    local Duplicate = ModuleScript:Clone()
+    Duplicate.Parent = script
+
+    local Module = require(Duplicate)
+
+    if typeof(Module) ~= "table" then
+        Duplicate:Destroy()
+        return
+    end
+
+    if not Module.Identifier or Module.Identifier ~= "VISUAL_EFFECT" then
+        Duplicate:Destroy()
+        return
+    end
+
+    if not Module.Callback then
+        warn(`No callback found in {ModuleScript:GetFullName()}`)
+        Duplicate:Destroy()
+        return
+    end
+
+    if not Module.Cleanup then
+        warn(`No cleanup found in {ModuleScript:GetFullName()}`)
+        Duplicate:Destroy()
+        return
+    end
+
+    local Lifetime = Module.Lifetime
+    if typeof(Module.GetLifetime) == "function" then
+        local Resolved = Module.GetLifetime(Parent)
+        if typeof(Resolved) == "number" and Resolved > 0 then
+            Lifetime = Resolved
+        end
+    end
+
+    if not Lifetime then
+        warn(`No lifetime found in {ModuleScript:GetFullName()}`)
+        Duplicate:Destroy()
+        return
+    end
+
+    local Delay = ModuleScript:GetAttribute("EmitDelay")
+    if Delay == nil and Parent then
+        Delay = Parent:GetAttribute("EmitDelay")
+    end
+    Delay = Delay or 0
+
+    task.delay(Delay, function()
+        Module.Callback(Parent)
+
+        task.delay(Lifetime, function()
+            local Success, Error = pcall(function()
+                Module.Cleanup(Parent)
+            end)
+
+            if not Success then
+                warn(Error)
+            end
+
+            Duplicate:Destroy()
+        end)
+    end)
+
+    return Lifetime + Delay
+end
+
 -- Actually plays the effect
 local function PlayEffect(This : Instance, Bin : Instance, WidgetParentPayload : {any}) : number?
     local TotalDuration = nil
 
     if This:IsA("ModuleScript") then
-        local Duplicate = This:Clone()
-        Duplicate.Parent = script
+        if IsPartAnimationModule(This) then
+            if Bin ~= This then
+                return
+            end
 
-        local Module = require(Duplicate)
-
-        if typeof(Module) ~= "table" then
-            return
+            TotalDuration = PlayVisualEffectModule(GetCanonicalPartAnimationModule(This), This.Parent)
+        else
+            TotalDuration = PlayVisualEffectModule(This, This.Parent)
         end
-
-        if not Module.Identifier or Module.Identifier ~= "VISUAL_EFFECT" then
-            return
+    elseif This:IsA("BasePart") then
+        local AnimationModule = GetCanonicalPartAnimationModule(ResolvePartAnimationModule(This))
+        if AnimationModule then
+            TotalDuration = PlayVisualEffectModule(AnimationModule, This)
         end
-
-        if not Module.Callback then
-            warn(`No callback found in {This:GetFullName()}`)
-            return
-        end
-
-        if not Module.Cleanup then
-            warn(`No cleanup found in {This:GetFullName()}`)
-            return
-        end
-
-        if not Module.Lifetime then
-            warn(`No lifetime found in {This:GetFullName()}`)
-            return
-        end
-        
-        task.delay(This:GetAttribute("EmitDelay") or 0, function()
-            Module.Callback(This.Parent)
-
-            task.delay(Module.Lifetime, function()
-                local Success, Error = pcall(function()
-                    Module.Cleanup(This.Parent)
-                end)
-
-                if not Success then
-                    warn(Error)
-                end
-
-                Duplicate:Destroy()
-            end)
-        end)
-
-        TotalDuration = Module.Lifetime + (This:GetAttribute("EmitDelay") or 0)
     elseif This:IsA("ParticleEmitter") then
         task.delay(This:GetAttribute("EmitDelay") or 0, function()
             This:Emit(This:GetAttribute("EmitCount") or 1)

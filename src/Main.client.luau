@@ -55,7 +55,7 @@ local function Init()
         local ValidInstances = {}
 
         for _, This : Instance in SelectedInstances do
-            if table.find(ACCEPTABLE_INSTANCE_TYPES, This.ClassName) then
+            if table.find(ACCEPTABLE_INSTANCE_TYPES, This.ClassName) or This:IsA("BasePart") then
                 table.insert(ValidInstances, This)
                 continue
             end
