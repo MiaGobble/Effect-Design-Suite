@@ -292,6 +292,7 @@ local function BuildParticleEmitterPathPreview(Emitter : ParticleEmitter, Parent
     local Duration = math.max(Emitter.Lifetime.Max, 0.01)
     local Steps = 24
     local DeltaTime = Duration / Steps
+    local LockedToPart = Emitter.LockedToPart
     local InheritedVelocity = Vector3.zero
     local EmitterParent = Emitter.Parent
     local SourcePart = if EmitterParent and EmitterParent:IsA("BasePart")
@@ -302,20 +303,37 @@ local function BuildParticleEmitterPathPreview(Emitter : ParticleEmitter, Parent
             and EmitterParent.Parent:IsA("BasePart")
         then EmitterParent.Parent
         else nil
-    if SourcePart then
-        local SourceMotionMultiplier = Emitter.VelocityInheritance + (if Emitter.LockedToPart then 1 else 0)
-        InheritedVelocity = SourcePart.AssemblyLinearVelocity * SourceMotionMultiplier
+    -- Locked particles are simulated in the emitter's local space, so the
+    -- parent part's world velocity does not apply as extra inherited motion.
+    if SourcePart and not LockedToPart then
+        InheritedVelocity = SourcePart.AssemblyLinearVelocity * Emitter.VelocityInheritance
     end
 
     DrawPointMarker(Origin, Parent, "ParticleEmitterOrigin", Color3.fromRGB(205, 135, 255))
 
+    local function ToWorldPosition(Position : Vector3)
+        if LockedToPart then
+            return EmitterCFrame:PointToWorldSpace(Position)
+        end
+
+        return Position
+    end
+
     local function DrawTrajectory(Direction, Speed)
-        local Position = Origin
-        local Velocity = EmitterCFrame:VectorToWorldSpace(Direction).Unit * Speed + InheritedVelocity
+        -- When LockedToPart is enabled, acceleration is applied in the
+        -- emitter's local space and the whole path stays attached to it.
+        local Position = if LockedToPart then Vector3.zero else Origin
+        local Velocity = if LockedToPart
+            then Direction.Unit * Speed
+            else EmitterCFrame:VectorToWorldSpace(Direction).Unit * Speed + InheritedVelocity
+        local Acceleration = Emitter.Acceleration
+        local LastWorldPosition = ToWorldPosition(Position)
 
         for _ = 1, Steps do
-            local NextPosition, NextVelocity = StepParticle(Position, Velocity, Emitter.Acceleration, Emitter.Drag, DeltaTime)
-            DrawParticlePathSegment(Position, NextPosition, Parent)
+            local NextPosition, NextVelocity = StepParticle(Position, Velocity, Acceleration, Emitter.Drag, DeltaTime)
+            local NextWorldPosition = ToWorldPosition(NextPosition)
+            DrawParticlePathSegment(LastWorldPosition, NextWorldPosition, Parent)
+            LastWorldPosition = NextWorldPosition
             Position = NextPosition
             Velocity = NextVelocity
         end
