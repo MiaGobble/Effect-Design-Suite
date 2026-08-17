@@ -34,6 +34,8 @@ local function GetFlipbookGridSize(FlipbookType : number?)
         return 8
     elseif FlipbookType == 4 then
         return 4
+    elseif FlipbookType == 2 then
+        return 2
     end
 
     return 1
@@ -44,9 +46,21 @@ local function GetParticleFlipbookLayout(FlipbookType : number?)
         return Enum.ParticleFlipbookLayout.Grid8x8
     elseif FlipbookType == 4 then
         return Enum.ParticleFlipbookLayout.Grid4x4
+    elseif FlipbookType == 2 then
+        return Enum.ParticleFlipbookLayout.Grid2x2
     end
 
     return Enum.ParticleFlipbookLayout.None
+end
+
+local function GetFlipbookTypeLabel(FlipbookType : number?)
+    local GridSize = GetFlipbookGridSize(FlipbookType)
+
+    if GridSize <= 1 then
+        return "Static"
+    end
+
+    return string.format("%dx%d flipbook", GridSize, GridSize)
 end
 
 local function ApplyAssetToTextureObject(Asset, Object : Instance)
@@ -195,7 +209,7 @@ local function CreateAssetCard(Scope, PreviewEntries, Asset, LayoutOrder : numbe
         Position = UDim2.fromOffset(68, 30),
         Size = UDim2.new(1, -76, 0, 16),
         AutomaticSize = Enum.AutomaticSize.None,
-        Text = string.format("%dx%d flipbook", GetFlipbookGridSize(Asset.FlipbookType), GetFlipbookGridSize(Asset.FlipbookType)),
+        Text = GetFlipbookTypeLabel(Asset.FlipbookType),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 11,
         Active = false,
@@ -915,11 +929,10 @@ function Interface:Init() : DockWidgetPluginGui
             local Asset = Use(SelectedAsset)
 
             if not Asset then
-                return "Flipbook: -"
+                return "Type: -"
             end
 
-            local GridSize = GetFlipbookGridSize(Asset.FlipbookType)
-            return string.format("Flipbook: %dx%d", GridSize, GridSize)
+            return "Type: " .. GetFlipbookTypeLabel(Asset.FlipbookType)
         end),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextSize = 12,
