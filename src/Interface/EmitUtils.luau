@@ -857,7 +857,7 @@ function EmitUtils:CreateNewAnimationIndicator(Parent : Instance, Type : string)
     TweenStyle.Value = "Linear"
     TweenStyle.Parent = AnimationIndicator
 
-    if not Parent:FindFirstChild("Mover") then
+    if not Parent:IsA("BasePart") and not Parent:FindFirstChild("Mover") then
         local Mover = Instance.new("Attachment")
         Mover.Name = "Mover"
         Mover.Parent = Parent

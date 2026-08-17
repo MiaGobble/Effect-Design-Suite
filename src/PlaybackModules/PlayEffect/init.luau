@@ -83,29 +83,189 @@ local function CalculateVolume(Sound: Sound, ParentInstance: Instance): number
     return Volume
 end
 
+local function GetWorldCFrame(Object : Instance) : CFrame?
+    if Object:IsA("BasePart") then
+        return Object.CFrame
+    end
+
+    if Object:IsA("Attachment") then
+        return Object.WorldCFrame
+    end
+
+    return nil
+end
+
+local function GetWorldPosition(Object : Instance) : Vector3?
+    if Object:IsA("BasePart") then
+        return Object.Position
+    end
+
+    if Object:IsA("Attachment") then
+        return Object.WorldPosition
+    end
+
+    return nil
+end
+
+local function ResolveMover(Host : Instance)
+    local Named = Host:FindFirstChild("Mover")
+    if Named and Named:IsA("BasePart") then
+        return Named
+    end
+
+    if Host:IsA("BasePart") then
+        return Host
+    end
+
+    if Named and Named:IsA("Attachment") then
+        return Named
+    end
+
+    return nil
+end
+
+local function GetMoverLocalCFrame(Mover : Instance, WorldCFrame : CFrame) : CFrame
+    if not Mover:IsA("Attachment") then
+        return WorldCFrame
+    end
+
+    local Parent = Mover.Parent
+    if Parent and Parent:IsA("BasePart") then
+        return Parent.CFrame:ToObjectSpace(WorldCFrame)
+    end
+
+    if Parent and Parent:IsA("Attachment") then
+        return Parent.WorldCFrame:ToObjectSpace(WorldCFrame)
+    end
+
+    return WorldCFrame
+end
+
+local function SetMoverCFrame(Mover : Instance, WorldCFrame : CFrame)
+    if Mover:IsA("BasePart") then
+        Mover.CFrame = WorldCFrame
+        return
+    end
+
+    if Mover:IsA("Attachment") then
+        Mover.CFrame = GetMoverLocalCFrame(Mover, WorldCFrame)
+    end
+end
+
+local ActiveMoverDrivers = setmetatable({}, {__mode = "k"})
+local ActiveMoverRestores = setmetatable({}, {__mode = "k"})
+
+local function StopMoverDriver(Mover : Instance)
+    local Existing = ActiveMoverDrivers[Mover]
+    if Existing then
+        Existing:Disconnect()
+        ActiveMoverDrivers[Mover] = nil
+    end
+
+    local Restore = ActiveMoverRestores[Mover]
+    if Restore then
+        ActiveMoverRestores[Mover] = nil
+        Restore()
+    end
+end
+
+local function DriveMoverAlpha(Mover : Instance, TweenStyle : TweenInfo, OnAlpha : (number) -> (), OnFinished : (() -> ())?) : number
+    StopMoverDriver(Mover)
+
+    local TotalDuration = GetTimeFromTweenInfo(TweenStyle)
+    local StartClock = os.clock()
+    OnAlpha(0)
+    ActiveMoverRestores[Mover] = OnFinished
+
+    local Connection
+    Connection = RunService.Heartbeat:Connect(function()
+        if not Mover.Parent then
+            StopMoverDriver(Mover)
+            return
+        end
+
+        local Elapsed = os.clock() - StartClock
+        local Delay = TweenStyle.DelayTime
+        local Time = math.max(TweenStyle.Time, 0.0001)
+        local Reverses = TweenStyle.Reverses
+        local RepeatCount = TweenStyle.RepeatCount
+        local CycleLength = Time * (if Reverses then 2 else 1)
+
+        if Elapsed < Delay then
+            OnAlpha(0)
+            return
+        end
+
+        local PlayElapsed = Elapsed - Delay
+        local CycleIndex = math.floor(PlayElapsed / CycleLength)
+        local Finished = RepeatCount >= 0 and CycleIndex >= RepeatCount + 1
+
+        if Finished or Elapsed >= TotalDuration then
+            local FinalLinear = if Reverses then 0 else 1
+            OnAlpha(TweenService:GetValue(FinalLinear, TweenStyle.EasingStyle, TweenStyle.EasingDirection))
+            Connection:Disconnect()
+            ActiveMoverDrivers[Mover] = nil
+
+            local Restore = ActiveMoverRestores[Mover]
+            ActiveMoverRestores[Mover] = nil
+            if Restore then
+                Restore()
+            end
+            return
+        end
+
+        local CycleTime = PlayElapsed - CycleIndex * CycleLength
+        local Linear = if Reverses and CycleTime > Time
+            then 1 - math.clamp((CycleTime - Time) / Time, 0, 1)
+            else math.clamp(CycleTime / Time, 0, 1)
+
+        OnAlpha(TweenService:GetValue(Linear, TweenStyle.EasingStyle, TweenStyle.EasingDirection))
+    end)
+
+    ActiveMoverDrivers[Mover] = Connection
+    return TotalDuration
+end
+
+local function SetMoverWorldPosition(Mover : Instance, Position : Vector3, Rotation : CFrame)
+    if Mover:IsA("BasePart") then
+        Mover.CFrame = CFrame.new(Position) * Rotation.Rotation
+        return
+    end
+
+    if Mover:IsA("Attachment") then
+        Mover.WorldPosition = Position
+    end
+end
+
 -- Function to animate tweens
-local function AnimateTween(ParentAttachment : Attachment)
-    local Mover = ParentAttachment:FindFirstChild("Mover")
+local function AnimateTween(Host : Instance)
+    local Mover = ResolveMover(Host)
 
     if not Mover then
         return
     end
 
-    local Origin = ParentAttachment:FindFirstChild("Origin")
+    local Origin = Host:FindFirstChild("Origin")
 
     if not Origin then
         return
     end
 
-    local Target = ParentAttachment:FindFirstChild("Target")
+    local Target = Host:FindFirstChild("Target")
 
     if not Target then
         return
     end
     
-    local AnimationIndicator = ParentAttachment:FindFirstChild("AnimationIndicator")
+    local AnimationIndicator = Host:FindFirstChild("AnimationIndicator")
 
     if not AnimationIndicator then
+        return
+    end
+
+    local OriginCFrame = GetWorldCFrame(Origin)
+    local TargetCFrame = GetWorldCFrame(Target)
+    if not OriginCFrame or not TargetCFrame then
         return
     end
 
@@ -118,40 +278,51 @@ local function AnimateTween(ParentAttachment : Attachment)
         AnimationIndicator.DelayTime.Value
     )
 
-    local Tween = TweenService:Create(Mover, TweenStyle, {
-        CFrame = Target.CFrame
-    })
+    if Mover:IsA("BasePart") then
+        StopMoverDriver(Mover)
+        local OriginalCFrame = Mover.CFrame
+        return DriveMoverAlpha(Mover, TweenStyle, function(Alpha)
+            Mover.CFrame = OriginCFrame:Lerp(TargetCFrame, Alpha)
+        end, function()
+            if Mover.Parent then
+                Mover.CFrame = OriginalCFrame
+            end
+        end)
+    end
 
-    Mover.CFrame = Origin.CFrame
+    SetMoverCFrame(Mover, OriginCFrame)
+    local Tween = TweenService:Create(Mover, TweenStyle, {
+        CFrame = GetMoverLocalCFrame(Mover, TargetCFrame)
+    })
     Tween:Play()
 
     return GetTimeFromTweenInfo(TweenStyle)
 end
 
 -- Function to animate bezier tweens
-local function AnimateBezier(ParentAttachment : Attachment)
-    local Mover = ParentAttachment:FindFirstChild("Mover")
+local function AnimateBezier(Host : Instance)
+    local Mover = ResolveMover(Host)
 
     if not Mover then
         return
     end
 
-    local Origin = ParentAttachment:FindFirstChild("Origin")
+    local Origin = Host:FindFirstChild("Origin")
 
     if not Origin then
         return
     end
     
-    local Target = ParentAttachment:FindFirstChild("Target")
+    local Target = Host:FindFirstChild("Target")
 
     if not Target then
         return
     end
 
-    local Midpoints = {ParentAttachment:FindFirstChild("Midpoint")}
+    local Midpoints = {Host:FindFirstChild("Midpoint")}
 
-    for _, Midpoint in ParentAttachment:GetChildren() do
-        if not Midpoint:IsA("Attachment") then
+    for _, Midpoint in Host:GetChildren() do
+        if not (Midpoint:IsA("Attachment") or Midpoint:IsA("BasePart")) then
             continue
         end
 
@@ -162,21 +333,31 @@ local function AnimateBezier(ParentAttachment : Attachment)
         end
     end
 
-    local AnimationIndicator = ParentAttachment:FindFirstChild("AnimationIndicator")
+    local AnimationIndicator = Host:FindFirstChild("AnimationIndicator")
 
     if not AnimationIndicator then
         return
     end
 
-    local Positions = {}
-
-    table.insert(Positions, Origin.WorldPosition)
-
-    for _, Midpoint in Midpoints do
-        table.insert(Positions, Midpoint.WorldPosition)
+    local OriginCFrame = GetWorldCFrame(Origin)
+    local OriginPosition = GetWorldPosition(Origin)
+    local TargetPosition = GetWorldPosition(Target)
+    if not OriginCFrame or not OriginPosition or not TargetPosition then
+        return
     end
 
-    table.insert(Positions, Target.WorldPosition)
+    local Positions = {}
+
+    table.insert(Positions, OriginPosition)
+
+    for _, Midpoint in Midpoints do
+        local MidpointPosition = GetWorldPosition(Midpoint)
+        if MidpointPosition then
+            table.insert(Positions, MidpointPosition)
+        end
+    end
+
+    table.insert(Positions, TargetPosition)
 
     local BezierCurve = Bezier.new(unpack(Positions))
 
@@ -188,6 +369,20 @@ local function AnimateBezier(ParentAttachment : Attachment)
         AnimationIndicator.Reverses.Value,
         AnimationIndicator.DelayTime.Value
     )
+
+    local Rotation = OriginCFrame.Rotation
+    if Mover:IsA("BasePart") then
+        StopMoverDriver(Mover)
+        local OriginalCFrame = Mover.CFrame
+        return DriveMoverAlpha(Mover, TweenStyle, function(Alpha)
+            local Position = BezierCurve:CalculatePositionAt(Alpha)
+            SetMoverWorldPosition(Mover, Position, Rotation)
+        end, function()
+            if Mover.Parent then
+                Mover.CFrame = OriginalCFrame
+            end
+        end)
+    end
 
     if Mover:FindFirstChild("ReferenceValue") then
         Mover:FindFirstChild("ReferenceValue"):Destroy()
@@ -208,14 +403,32 @@ local function AnimateBezier(ParentAttachment : Attachment)
 
     ReferenceValue.Changed:Connect(function()
         local Position = BezierCurve:CalculatePositionAt(ReferenceValue.Value)
-        Mover.WorldPosition = Position
+        SetMoverWorldPosition(Mover, Position, Rotation)
     end)
 
-    --Debris:AddItem(ReferenceValue, GetTimeFromTweenInfo(TweenStyle))
-    Mover.CFrame = Origin.CFrame
+    SetMoverCFrame(Mover, OriginCFrame)
     Tween:Play()
 
     return GetTimeFromTweenInfo(TweenStyle)
+end
+
+local function PlayHostAnimationIndicator(Host : Instance) : number?
+    if not Host then
+        return nil
+    end
+
+    local Indicator = Host:FindFirstChild("AnimationIndicator")
+    if not (Indicator and Indicator:IsA("StringValue")) then
+        return nil
+    end
+
+    if Indicator.Value == "Tween" then
+        return AnimateTween(Host)
+    elseif Indicator.Value == "Bezier" then
+        return AnimateBezier(Host)
+    end
+
+    return nil
 end
 
 local PART_ANIMATION_REFERENCE = "EffectDesignerAnimation"
@@ -343,9 +556,15 @@ local function PlayEffect(This : Instance, Bin : Instance, WidgetParentPayload :
             TotalDuration = PlayVisualEffectModule(This, This.Parent)
         end
     elseif This:IsA("BasePart") then
+        local MaxDuration = 0
         local AnimationModule = GetCanonicalPartAnimationModule(ResolvePartAnimationModule(This))
         if AnimationModule then
-            TotalDuration = PlayVisualEffectModule(AnimationModule, This)
+            MaxDuration = math.max(MaxDuration, PlayVisualEffectModule(AnimationModule, This) or 0)
+        end
+
+        MaxDuration = math.max(MaxDuration, PlayHostAnimationIndicator(This) or 0)
+        if MaxDuration > 0 then
+            TotalDuration = MaxDuration
         end
     elseif This:IsA("ParticleEmitter") then
         task.delay(This:GetAttribute("EmitDelay") or 0, function()
@@ -413,11 +632,7 @@ local function PlayEffect(This : Instance, Bin : Instance, WidgetParentPayload :
 
         TotalDuration = (This:GetAttribute("EmitDuration") or 0) + (This:GetAttribute("EmitDelay") or 0)
     elseif This:IsA("StringValue") and This.Name == "AnimationIndicator" then
-        if This.Value == "Tween" then
-            TotalDuration = AnimateTween(This.Parent)
-        elseif This.Value == "Bezier" then
-            TotalDuration = AnimateBezier(This.Parent)
-        end
+        TotalDuration = PlayHostAnimationIndicator(This.Parent)
     end
 
     return TotalDuration
