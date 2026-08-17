@@ -11,44 +11,53 @@
         Effect.Cleanup : (Parent : Instance) -> nil
 ]]
 
-local HttpService = game:GetService("HttpService")
-
 local Effect = {}
 
-Effect.Identifier = "VISUAL_EFFECT"
-Effect.Lifetime = 1
-
+-- Constants
+local VISUAL_EFFECT_IDENTIFIER = "VISUAL_EFFECT"
+local DEFAULT_LIFETIME = 1
 local CURVE_PREFIX = "EffectDesignerCurve_"
 local COLOR_ATTRIBUTE = "EffectDesignerOklabColorSequence"
 local ORIGINAL_SIZE = "EffectDesignerOriginalSize"
 local ORIGINAL_TRANSPARENCY = "EffectDesignerOriginalTransparency"
 local ORIGINAL_COLOR = "EffectDesignerOriginalColor"
+local SHARED_FOLDER_NAME = "EffectDesignerSuite"
+local PACKAGE_SEARCH_DEPTH = 8
+local CURVE_SAMPLE_BUDGET = 90
+local SCOPE_REGISTRY_NAME = "EDSPartAnimationScopes"
 
-local function FindPackage(Name : string)
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local Shared = ReplicatedStorage:FindFirstChild("EffectDesignerSuite")
+-- Services
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Constants extended
+Effect.Identifier = VISUAL_EFFECT_IDENTIFIER
+Effect.Lifetime = DEFAULT_LIFETIME
+
+local function FindPackage(name : string)
+    local Shared = ReplicatedStorage:FindFirstChild(SHARED_FOLDER_NAME)
     if Shared then
-        local Module = Shared:FindFirstChild(Name)
+        local Module = Shared:FindFirstChild(name)
         if Module then
             return require(Module)
         end
     end
 
     local Current = script
-    for _ = 1, 8 do
+    for _ = 1, PACKAGE_SEARCH_DEPTH do
         Current = Current.Parent
         if not Current then
             break
         end
 
-        local Direct = Current:FindFirstChild(Name)
+        local Direct = Current:FindFirstChild(name)
         if Direct then
             return require(Direct)
         end
 
         local Packages = Current:FindFirstChild("Packages")
         if Packages then
-            local Packaged = Packages:FindFirstChild(Name)
+            local Packaged = Packages:FindFirstChild(name)
             if Packaged then
                 return require(Packaged)
             end
@@ -59,20 +68,20 @@ local function FindPackage(Name : string)
 end
 
 local function GetScopeRegistry()
-    if shared.EDSPartAnimationScopes == nil then
-        shared.EDSPartAnimationScopes = setmetatable({}, {__mode = "k"})
+    if shared[SCOPE_REGISTRY_NAME] == nil then
+        shared[SCOPE_REGISTRY_NAME] = setmetatable({}, {__mode = "k"})
     end
 
-    return shared.EDSPartAnimationScopes
+    return shared[SCOPE_REGISTRY_NAME]
 end
 
-local function DecodeJson(Text)
-    if typeof(Text) ~= "string" or Text == "" then
+local function DecodeJson(text)
+    if typeof(text) ~= "string" or text == "" then
         return nil
     end
 
     local Success, Decoded = pcall(function()
-        return HttpService:JSONDecode(Text)
+        return HttpService:JSONDecode(text)
     end)
 
     if Success and typeof(Decoded) == "table" then
@@ -82,14 +91,14 @@ local function DecodeJson(Text)
     return nil
 end
 
-local function ReadCurve(Parent : Instance, Property : string)
-    local Points = DecodeJson(Parent:GetAttribute(CURVE_PREFIX .. Property))
+local function ReadCurve(parent : Instance, property : string)
+    local Points = DecodeJson(parent:GetAttribute(CURVE_PREFIX .. property))
     if typeof(Points) ~= "table" or #Points < 2 then
         return nil
     end
 
-    local MinRange = tonumber(Parent:GetAttribute(CURVE_PREFIX .. Property .. "_MinRange"))
-    local MaxRange = tonumber(Parent:GetAttribute(CURVE_PREFIX .. Property .. "_MaxRange"))
+    local MinRange = tonumber(parent:GetAttribute(CURVE_PREFIX .. property .. "_MinRange"))
+    local MaxRange = tonumber(parent:GetAttribute(CURVE_PREFIX .. property .. "_MaxRange"))
 
     return {
         Points = Points,
@@ -98,41 +107,41 @@ local function ReadCurve(Parent : Instance, Property : string)
     }
 end
 
-local function GetHandle(Point, Prefix, DefaultX)
-    local X = Point[Prefix .. "HandleX"]
-    local Y = Point[Prefix .. "HandleY"]
+local function GetHandle(point, prefix, defaultX)
+    local X = point[prefix .. "HandleX"]
+    local Y = point[prefix .. "HandleY"]
 
-    if X == nil and Prefix == "Out" then
-        X = Point.OutHandle
-    elseif X == nil and Prefix == "In" then
-        X = Point.InHandle
+    if X == nil and prefix == "Out" then
+        X = point.OutHandle
+    elseif X == nil and prefix == "In" then
+        X = point.InHandle
     end
 
-    return X or DefaultX, Y or 0
+    return X or defaultX, Y or 0
 end
 
-local function Cubic(A, B, C, D, T)
-    local U = 1 - T
-    return A * U * U * U + 3 * B * U * U * T + 3 * C * U * T * T + D * T * T * T
+local function Cubic(a, b, c, d, t)
+    local U = 1 - t
+    return a * U * U * U + 3 * b * U * U * t + 3 * c * U * t * t + d * t * t * t
 end
 
-local function SampleCurve(Curve, Time : number)
-    local Sorted = table.clone(Curve.Points)
-    table.sort(Sorted, function(Left, Right)
-        return (Left.Time or 0) < (Right.Time or 0)
+local function SampleCurve(curve, time : number)
+    local Sorted = table.clone(curve.Points)
+    table.sort(Sorted, function(left, right)
+        return (left.Time or 0) < (right.Time or 0)
     end)
 
     local Samples = {}
-    local SamplesPerSegment = math.max(2, math.floor(90 / math.max(1, #Sorted - 1)))
+    local SamplesPerSegment = math.max(2, math.floor(CURVE_SAMPLE_BUDGET / math.max(1, #Sorted - 1)))
 
-    for Index = 1, #Sorted - 1 do
-        local Start = Sorted[Index]
-        local Finish = Sorted[Index + 1]
+    for index = 1, #Sorted - 1 do
+        local Start = Sorted[index]
+        local Finish = Sorted[index + 1]
         local OutX, OutY = GetHandle(Start, "Out", 0)
         local InX, InY = GetHandle(Finish, "In", 0)
 
-        for Step = 0, SamplesPerSegment - 1 do
-            local T = Step / SamplesPerSegment
+        for step = 0, SamplesPerSegment - 1 do
+            local T = step / SamplesPerSegment
             table.insert(Samples, {
                 Time = Cubic(Start.Time, Start.Time + OutX, Finish.Time + InX, Finish.Time, T),
                 Value = Cubic(Start.Value, Start.Value + OutY, Finish.Value + InY, Finish.Value, T),
@@ -142,11 +151,11 @@ local function SampleCurve(Curve, Time : number)
 
     local Last = Sorted[#Sorted]
     table.insert(Samples, {Time = Last.Time, Value = Last.Value})
-    table.sort(Samples, function(Left, Right)
-        return Left.Time < Right.Time
+    table.sort(Samples, function(left, right)
+        return left.Time < right.Time
     end)
 
-    local ClampedTime = math.clamp(Time, 0, 1)
+    local ClampedTime = math.clamp(time, 0, 1)
     local Normalized = 0
 
     if ClampedTime <= Samples[1].Time then
@@ -154,9 +163,9 @@ local function SampleCurve(Curve, Time : number)
     elseif ClampedTime >= Samples[#Samples].Time then
         Normalized = Samples[#Samples].Value
     else
-        for Index = 1, #Samples - 1 do
-            local Start = Samples[Index]
-            local Finish = Samples[Index + 1]
+        for index = 1, #Samples - 1 do
+            local Start = Samples[index]
+            local Finish = Samples[index + 1]
             if ClampedTime <= Finish.Time then
                 local Duration = Finish.Time - Start.Time
                 local Alpha = if Duration <= 0 then 0 else (ClampedTime - Start.Time) / Duration
@@ -166,29 +175,29 @@ local function SampleCurve(Curve, Time : number)
         end
     end
 
-    return Curve.MinRange + math.clamp(Normalized, 0, 1) * (Curve.MaxRange - Curve.MinRange)
+    return curve.MinRange + math.clamp(Normalized, 0, 1) * (curve.MaxRange - curve.MinRange)
 end
 
-local function PointToOklab(Point)
-    return Vector3.new(Point.L, Point.A, Point.B)
+local function PointToOklab(point)
+    return Vector3.new(point.L, point.A, point.B)
 end
 
-local function SampleColor(Points, Time : number, Oklab)
-    local Sorted = table.clone(Points)
-    table.sort(Sorted, function(Left, Right)
-        return Left.Time < Right.Time
+local function SampleColor(points, time : number, oklab)
+    local Sorted = table.clone(points)
+    table.sort(Sorted, function(left, right)
+        return left.Time < right.Time
     end)
 
-    local ClampedTime = math.clamp(Time, 0, 1)
+    local ClampedTime = math.clamp(time, 0, 1)
     local OklabValue
 
     if #Sorted == 1 or ClampedTime <= Sorted[1].Time then
         OklabValue = PointToOklab(Sorted[1])
     else
         OklabValue = PointToOklab(Sorted[#Sorted])
-        for Index = 1, #Sorted - 1 do
-            local Start = Sorted[Index]
-            local Finish = Sorted[Index + 1]
+        for index = 1, #Sorted - 1 do
+            local Start = Sorted[index]
+            local Finish = Sorted[index + 1]
             if ClampedTime <= Finish.Time then
                 local Duration = Finish.Time - Start.Time
                 local Alpha = if Duration <= 0 then 0 else (ClampedTime - Start.Time) / Duration
@@ -198,11 +207,11 @@ local function SampleColor(Points, Time : number, Oklab)
         end
     end
 
-    return Oklab.FromOklab(OklabValue)
+    return oklab.FromOklab(OklabValue)
 end
 
-function Effect.GetLifetime(Parent : Instance)
-    local Duration = tonumber(Parent:GetAttribute("EmitDuration"))
+function Effect.GetLifetime(parent : Instance)
+    local Duration = tonumber(parent:GetAttribute("EmitDuration"))
     if Duration and Duration > 0 then
         return Duration
     end
@@ -210,22 +219,22 @@ function Effect.GetLifetime(Parent : Instance)
     return Effect.Lifetime
 end
 
-function Effect.Callback(Parent : Instance)
-    if not Parent or not Parent:IsA("BasePart") then
+function Effect.Callback(parent : Instance)
+    if not parent or not parent:IsA("BasePart") then
         return
     end
 
-    Effect.Cleanup(Parent)
+    Effect.Cleanup(parent)
 
     local Seam = FindPackage("Seam")
     if not Seam then
-        warn("Effect Designer Suite could not find Seam, so part animation was skipped.")
+        warn(`Effect Designer Suite could not find Seam, so part animation was skipped. {debug.traceback()}`)
         return
     end
 
-    local TransparencyCurve = ReadCurve(Parent, "Transparency")
-    local ScaleCurve = ReadCurve(Parent, "Scale")
-    local ColorPoints = DecodeJson(Parent:GetAttribute(COLOR_ATTRIBUTE))
+    local TransparencyCurve = ReadCurve(parent, "Transparency")
+    local ScaleCurve = ReadCurve(parent, "Scale")
+    local ColorPoints = DecodeJson(parent:GetAttribute(COLOR_ATTRIBUTE))
     if typeof(ColorPoints) ~= "table" or #ColorPoints < 2 then
         ColorPoints = nil
     end
@@ -234,40 +243,40 @@ function Effect.Callback(Parent : Instance)
         return
     end
 
-    local Oklab = nil
+    local oklab = nil
     if ColorPoints then
-        Oklab = FindPackage("Oklab")
-        if not Oklab then
-            warn("Effect Designer Suite could not find Oklab, so part color animation was skipped.")
+        oklab = FindPackage("Oklab")
+        if not oklab then
+            warn(`Effect Designer Suite could not find Oklab, so part color animation was skipped. {debug.traceback()}`)
             ColorPoints = nil
         end
     end
 
-    local Lifetime = Effect.GetLifetime(Parent)
-    local OriginalSize = Parent:GetAttribute(ORIGINAL_SIZE)
+    local Lifetime = Effect.GetLifetime(parent)
+    local OriginalSize = parent:GetAttribute(ORIGINAL_SIZE)
     if typeof(OriginalSize) ~= "Vector3" then
-        OriginalSize = Parent.Size
+        OriginalSize = parent.Size
     end
 
     local Scope = Seam.Scope(Seam)
     local AlphaTarget = Scope:Value(0)
     local AnimatedAlpha = Scope:Tween(AlphaTarget, TweenInfo.new(Lifetime, Enum.EasingStyle.Linear, Enum.EasingDirection.Out))
 
-    local function ApplyAlpha(Alpha : number)
-        if not Parent.Parent then
+    local function ApplyAlpha(alpha : number)
+        if not parent.Parent then
             return
         end
 
         if TransparencyCurve then
-            Parent.Transparency = SampleCurve(TransparencyCurve, Alpha)
+            parent.Transparency = SampleCurve(TransparencyCurve, alpha)
         end
 
         if ScaleCurve then
-            Parent.Size = OriginalSize * SampleCurve(ScaleCurve, Alpha)
+            parent.Size = OriginalSize * SampleCurve(ScaleCurve, alpha)
         end
 
-        if ColorPoints and Oklab then
-            Parent.Color = SampleColor(ColorPoints, Alpha, Oklab)
+        if ColorPoints and oklab then
+            parent.Color = SampleColor(ColorPoints, alpha, oklab)
         end
     end
 
@@ -276,37 +285,37 @@ function Effect.Callback(Parent : Instance)
         ApplyAlpha(AnimatedAlpha.Value)
     end))
 
-    GetScopeRegistry()[Parent] = Scope
+    GetScopeRegistry()[parent] = Scope
     AlphaTarget.Value = 1
 end
 
-function Effect.Cleanup(Parent : Instance)
+function Effect.Cleanup(parent : Instance)
     local Registry = GetScopeRegistry()
-    local Scope = Registry[Parent]
+    local Scope = Registry[parent]
     if Scope then
-        Registry[Parent] = nil
+        Registry[parent] = nil
         pcall(function()
             Scope:Destroy()
         end)
     end
 
-    if not Parent or not Parent:IsA("BasePart") then
+    if not parent or not parent:IsA("BasePart") then
         return
     end
 
-    local OriginalTransparency = Parent:GetAttribute(ORIGINAL_TRANSPARENCY)
-    if typeof(OriginalTransparency) == "number" and ReadCurve(Parent, "Transparency") then
-        Parent.Transparency = OriginalTransparency
+    local OriginalTransparency = parent:GetAttribute(ORIGINAL_TRANSPARENCY)
+    if typeof(OriginalTransparency) == "number" and ReadCurve(parent, "Transparency") then
+        parent.Transparency = OriginalTransparency
     end
 
-    local OriginalSize = Parent:GetAttribute(ORIGINAL_SIZE)
-    if typeof(OriginalSize) == "Vector3" and ReadCurve(Parent, "Scale") then
-        Parent.Size = OriginalSize
+    local OriginalSize = parent:GetAttribute(ORIGINAL_SIZE)
+    if typeof(OriginalSize) == "Vector3" and ReadCurve(parent, "Scale") then
+        parent.Size = OriginalSize
     end
 
-    local OriginalColor = Parent:GetAttribute(ORIGINAL_COLOR)
-    if typeof(OriginalColor) == "Color3" and DecodeJson(Parent:GetAttribute(COLOR_ATTRIBUTE)) then
-        Parent.Color = OriginalColor
+    local OriginalColor = parent:GetAttribute(ORIGINAL_COLOR)
+    if typeof(OriginalColor) == "Color3" and DecodeJson(parent:GetAttribute(COLOR_ATTRIBUTE)) then
+        parent.Color = OriginalColor
     end
 end
 

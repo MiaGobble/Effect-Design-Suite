@@ -1,9 +1,10 @@
 local LocalInput = {}
 
+-- Services
 local UserInputService = game:GetService("UserInputService")
 
-local function GetPluginMousePosition(GuiObject : GuiObject) : Vector2?
-    local PluginGui = GuiObject:FindFirstAncestorWhichIsA("PluginGui")
+local function GetPluginMousePosition(guiObject : GuiObject) : Vector2?
+    local PluginGui = guiObject:FindFirstAncestorWhichIsA("PluginGui")
     if not PluginGui then
         return nil
     end
@@ -19,19 +20,19 @@ local function GetPluginMousePosition(GuiObject : GuiObject) : Vector2?
     return nil
 end
 
-function LocalInput.GetLocalFromScreenPosition(GuiObject : GuiObject, ScreenPosition : Vector2)
+function LocalInput.GetLocalFromScreenPosition(guiObject : GuiObject, screenPosition : Vector2)
     -- AbsolutePosition is relative to a PluginGui, while InputObject.Position is
     -- relative to the Studio window. Use the plugin-local pointer when possible.
-    local PointerPosition = GetPluginMousePosition(GuiObject) or ScreenPosition
-    return PointerPosition - GuiObject.AbsolutePosition
+    local PointerPosition = GetPluginMousePosition(guiObject) or screenPosition
+    return PointerPosition - guiObject.AbsolutePosition
 end
 
-function LocalInput.GetLocalMousePosition(GuiObject : GuiObject)
-    local PointerPosition = GetPluginMousePosition(GuiObject) or UserInputService:GetMouseLocation()
-    return PointerPosition - GuiObject.AbsolutePosition
+function LocalInput.GetLocalMousePosition(guiObject : GuiObject)
+    local PointerPosition = GetPluginMousePosition(guiObject) or UserInputService:GetMouseLocation()
+    return PointerPosition - guiObject.AbsolutePosition
 end
 
-function LocalInput.BindPrimaryDrag(Scope, GuiObject : GuiObject, OnMoved : (Vector2) -> (), OnStopped : (() -> ())?)
+function LocalInput.BindPrimaryDrag(scope, guiObject : GuiObject, onMoved : (Vector2) -> (), onStopped : (() -> ())?)
     local MoveConnection = nil
     local GlobalMoveConnection = nil
     local EndConnection = nil
@@ -75,53 +76,53 @@ function LocalInput.BindPrimaryDrag(Scope, GuiObject : GuiObject, OnMoved : (Vec
 
         DisconnectConnections()
 
-        if OnStopped then
-            OnStopped()
+        if onStopped then
+            onStopped()
         end
     end
 
-    local function Start(StartLocalPosition : Vector2?, PrimaryInput : InputObject?)
+    local function Start(startLocalPosition : Vector2?, primaryInput : InputObject?)
         DisconnectConnections()
         IsActive = true
 
-        OnMoved(StartLocalPosition or LocalInput.GetLocalMousePosition(GuiObject))
+        onMoved(startLocalPosition or LocalInput.GetLocalMousePosition(guiObject))
 
-        if PrimaryInput then
-            PrimaryInputConnection = PrimaryInput:GetPropertyChangedSignal("UserInputState"):Connect(function()
-                if PrimaryInput.UserInputState == Enum.UserInputState.End
-                    or PrimaryInput.UserInputState == Enum.UserInputState.Cancel then
+        if primaryInput then
+            PrimaryInputConnection = primaryInput:GetPropertyChangedSignal("UserInputState"):Connect(function()
+                if primaryInput.UserInputState == Enum.UserInputState.End
+                    or primaryInput.UserInputState == Enum.UserInputState.Cancel then
                     Stop()
                 end
             end)
         end
 
-        MoveConnection = GuiObject.MouseMoved:Connect(function()
-            OnMoved(LocalInput.GetLocalMousePosition(GuiObject))
+        MoveConnection = guiObject.MouseMoved:Connect(function()
+            onMoved(LocalInput.GetLocalMousePosition(guiObject))
         end)
 
-        GlobalMoveConnection = UserInputService.InputChanged:Connect(function(Input)
-            if Input.UserInputType ~= Enum.UserInputType.MouseMovement then
+        GlobalMoveConnection = UserInputService.InputChanged:Connect(function(input)
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement then
                 return
             end
 
-            local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
-            OnMoved(LocalInput.GetLocalFromScreenPosition(GuiObject, ScreenPosition))
+            local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
+            onMoved(LocalInput.GetLocalFromScreenPosition(guiObject, ScreenPosition))
         end)
 
-        EndConnection = GuiObject.InputEnded:Connect(function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+        EndConnection = guiObject.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
                 Stop()
             end
         end)
 
-        GlobalEndConnection = UserInputService.InputEnded:Connect(function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+        GlobalEndConnection = UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
                 Stop()
             end
         end)
     end
 
-    Scope:AddObject(function()
+    scope:AddObject(function()
         Stop()
     end)
 

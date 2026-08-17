@@ -1,19 +1,25 @@
 local WorldSpaceAcceleration = {}
 
-local CollectionService = game:GetService("CollectionService")
-local RunService = game:GetService("RunService")
-
+-- Constants
+local ACCELERATION_EPSILON = 1e-4
+local PREVIEW_MIN_DURATION = 0.05
+local PREVIEW_EXTRA_TIME = 0.1
 WorldSpaceAcceleration.ATTRIBUTE_ENABLED = "WorldSpaceAcceleration"
 WorldSpaceAcceleration.ATTRIBUTE_VECTOR = "WorldAcceleration"
 WorldSpaceAcceleration.TAG = "EDSWorldSpaceAcceleration"
 WorldSpaceAcceleration.SCRIPT_NAME = "EDSWorldSpaceAcceleration.client"
 
+-- Services
+local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
+
+-- Variables
 local Applying = setmetatable({}, {__mode = "k"})
 local PreviewEmitters = {}
 local PreviewConnection = nil
 
-local function GetEmitterCFrame(Emitter)
-    local Parent = Emitter.Parent
+local function GetEmitterCFrame(emitter)
+    local Parent = emitter.Parent
     if Parent and Parent:IsA("Attachment") then
         return Parent.WorldCFrame
     end
@@ -23,41 +29,41 @@ local function GetEmitterCFrame(Emitter)
     return nil
 end
 
-local function ApplyToEmitter(Emitter)
-    if not Emitter.LockedToPart then
+local function ApplyToEmitter(emitter)
+    if not emitter.LockedToPart then
         return
     end
 
-    local EmitterCFrame = GetEmitterCFrame(Emitter)
+    local EmitterCFrame = GetEmitterCFrame(emitter)
     if not EmitterCFrame then
         return
     end
 
-    local World = Emitter:GetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR)
+    local World = emitter:GetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR)
     if typeof(World) ~= "Vector3" then
-        World = Emitter.Acceleration
-        Emitter:SetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR, World)
+        World = emitter.Acceleration
+        emitter:SetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR, World)
     end
 
     local LocalAccel = EmitterCFrame:VectorToObjectSpace(World)
-    if (Emitter.Acceleration - LocalAccel).Magnitude < 1e-4 then
+    if (emitter.Acceleration - LocalAccel).Magnitude < ACCELERATION_EPSILON then
         return
     end
 
-    Applying[Emitter] = true
-    Emitter.Acceleration = LocalAccel
-    Applying[Emitter] = false
+    Applying[emitter] = true
+    emitter.Acceleration = LocalAccel
+    Applying[emitter] = false
 end
 
-local function RestoreEmitter(Emitter)
-    local Stored = Emitter:GetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR)
+local function RestoreEmitter(emitter)
+    local Stored = emitter:GetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR)
     if typeof(Stored) ~= "Vector3" then
         return
     end
 
-    Applying[Emitter] = true
-    Emitter.Acceleration = Stored
-    Applying[Emitter] = false
+    Applying[emitter] = true
+    emitter.Acceleration = Stored
+    Applying[emitter] = false
 end
 
 WorldSpaceAcceleration.SCRIPT_SOURCE = [[
@@ -71,8 +77,8 @@ local ATTR_WORLD = "WorldAcceleration"
 local Applying = setmetatable({}, {__mode = "k"})
 local WorldAccel = setmetatable({}, {__mode = "k"})
 
-local function GetEmitterCFrame(Emitter)
-	local Parent = Emitter.Parent
+local function GetEmitterCFrame(emitter)
+	local Parent = emitter.Parent
 	if Parent and Parent:IsA("Attachment") then
 		return Parent.WorldCFrame
 	end
@@ -82,55 +88,55 @@ local function GetEmitterCFrame(Emitter)
 	return nil
 end
 
-local function BindEmitter(Emitter)
-	local Stored = Emitter:GetAttribute(ATTR_WORLD)
+local function BindEmitter(emitter)
+	local Stored = emitter:GetAttribute(ATTR_WORLD)
 	if typeof(Stored) == "Vector3" then
-		WorldAccel[Emitter] = Stored
+		WorldAccel[emitter] = Stored
 	else
-		WorldAccel[Emitter] = Emitter.Acceleration
-		Emitter:SetAttribute(ATTR_WORLD, Emitter.Acceleration)
+		WorldAccel[emitter] = emitter.Acceleration
+		emitter:SetAttribute(ATTR_WORLD, emitter.Acceleration)
 	end
 end
 
-local function UnbindEmitter(Emitter)
-	WorldAccel[Emitter] = nil
-	Applying[Emitter] = nil
+local function UnbindEmitter(emitter)
+	WorldAccel[emitter] = nil
+	Applying[emitter] = nil
 end
 
-local function RememberWorldAcceleration(Emitter)
-	if Applying[Emitter] then
+local function RememberWorldAcceleration(emitter)
+	if Applying[emitter] then
 		return
 	end
 
-	WorldAccel[Emitter] = Emitter.Acceleration
-	Emitter:SetAttribute(ATTR_WORLD, Emitter.Acceleration)
+	WorldAccel[emitter] = emitter.Acceleration
+	emitter:SetAttribute(ATTR_WORLD, emitter.Acceleration)
 end
 
-local function ApplyWorldAcceleration(Emitter)
-	if not Emitter.LockedToPart then
+local function ApplyWorldAcceleration(emitter)
+	if not emitter.LockedToPart then
 		return
 	end
 
-	local EmitterCFrame = GetEmitterCFrame(Emitter)
+	local EmitterCFrame = GetEmitterCFrame(emitter)
 	if not EmitterCFrame then
 		return
 	end
 
-	local World = WorldAccel[Emitter]
+	local World = WorldAccel[emitter]
 	if typeof(World) ~= "Vector3" then
-		local Stored = Emitter:GetAttribute(ATTR_WORLD)
-		World = if typeof(Stored) == "Vector3" then Stored else Emitter.Acceleration
-		WorldAccel[Emitter] = World
+		local Stored = emitter:GetAttribute(ATTR_WORLD)
+		World = if typeof(Stored) == "Vector3" then Stored else emitter.Acceleration
+		WorldAccel[emitter] = World
 	end
 
 	local LocalAccel = EmitterCFrame:VectorToObjectSpace(World)
-	if (Emitter.Acceleration - LocalAccel).Magnitude < 1e-4 then
+	if (emitter.Acceleration - LocalAccel).Magnitude < 1e-4 then
 		return
 	end
 
-	Applying[Emitter] = true
-	Emitter.Acceleration = LocalAccel
-	Applying[Emitter] = false
+	Applying[emitter] = true
+	emitter.Acceleration = LocalAccel
+	Applying[emitter] = false
 end
 
 local Success, Collection = pcall(function()
@@ -145,64 +151,64 @@ if Success and Collection then
 		Collection.OnPropertyChanged.Acceleration = RememberWorldAcceleration
 	end)
 else
-	local function Track(Instance)
-		if Instance:IsA("ParticleEmitter") then
-			BindEmitter(Instance)
+	local function Track(instance)
+		if instance:IsA("ParticleEmitter") then
+			BindEmitter(instance)
 		end
 	end
 
-	for _, Instance in CollectionService:GetTagged(TAG) do
-		Track(Instance)
+	for _, instance in CollectionService:GetTagged(TAG) do
+		Track(instance)
 	end
 
 	CollectionService:GetInstanceAddedSignal(TAG):Connect(Track)
-	CollectionService:GetInstanceRemovedSignal(TAG):Connect(function(Instance)
-		UnbindEmitter(Instance)
+	CollectionService:GetInstanceRemovedSignal(TAG):Connect(function(instance)
+		UnbindEmitter(instance)
 	end)
 
 	RunService.Heartbeat:Connect(function()
-		for _, Instance in CollectionService:GetTagged(TAG) do
-			if Instance:IsA("ParticleEmitter") then
-				ApplyWorldAcceleration(Instance)
+		for _, instance in CollectionService:GetTagged(TAG) do
+			if instance:IsA("ParticleEmitter") then
+				ApplyWorldAcceleration(instance)
 			end
 		end
 	end)
 end
 ]]
 
-function WorldSpaceAcceleration.IsEnabled(Emitter : Instance) : boolean
-    return Emitter:IsA("ParticleEmitter") and Emitter:GetAttribute(WorldSpaceAcceleration.ATTRIBUTE_ENABLED) == true
+function WorldSpaceAcceleration.IsEnabled(emitter : Instance) : boolean
+    return emitter:IsA("ParticleEmitter") and emitter:GetAttribute(WorldSpaceAcceleration.ATTRIBUTE_ENABLED) == true
 end
 
-function WorldSpaceAcceleration.GetAuthoredAcceleration(Emitter : ParticleEmitter) : Vector3
-    if WorldSpaceAcceleration.IsEnabled(Emitter) then
-        local Stored = Emitter:GetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR)
+function WorldSpaceAcceleration.GetAuthoredAcceleration(emitter : ParticleEmitter) : Vector3
+    if WorldSpaceAcceleration.IsEnabled(emitter) then
+        local Stored = emitter:GetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR)
         if typeof(Stored) == "Vector3" then
             return Stored
         end
     end
 
-    return Emitter.Acceleration
+    return emitter.Acceleration
 end
 
-function WorldSpaceAcceleration.GetSimulationAcceleration(Emitter : ParticleEmitter, EmitterCFrame : CFrame, LockedToPart : boolean) : Vector3
-    local Authored = WorldSpaceAcceleration.GetAuthoredAcceleration(Emitter)
+function WorldSpaceAcceleration.GetSimulationAcceleration(emitter : ParticleEmitter, emitterCFrame : CFrame, lockedToPart : boolean) : Vector3
+    local Authored = WorldSpaceAcceleration.GetAuthoredAcceleration(emitter)
 
-    if LockedToPart and WorldSpaceAcceleration.IsEnabled(Emitter) then
-        return EmitterCFrame:VectorToObjectSpace(Authored)
+    if lockedToPart and WorldSpaceAcceleration.IsEnabled(emitter) then
+        return emitterCFrame:VectorToObjectSpace(Authored)
     end
 
     return Authored
 end
 
-function WorldSpaceAcceleration.WatchEmitPreview(Emitter : Instance, Duration : number)
-    if not WorldSpaceAcceleration.IsEnabled(Emitter) then
+function WorldSpaceAcceleration.WatchEmitPreview(emitter : Instance, duration : number)
+    if not WorldSpaceAcceleration.IsEnabled(emitter) then
         return
     end
 
-    local ExpireAt = os.clock() + math.max(Duration, 0.05) + 0.1
-    PreviewEmitters[Emitter] = math.max(PreviewEmitters[Emitter] or 0, ExpireAt)
-    ApplyToEmitter(Emitter)
+    local ExpireAt = os.clock() + math.max(duration, PREVIEW_MIN_DURATION) + PREVIEW_EXTRA_TIME
+    PreviewEmitters[emitter] = math.max(PreviewEmitters[emitter] or 0, ExpireAt)
+    ApplyToEmitter(emitter)
 
     if PreviewConnection then
         return
@@ -211,15 +217,15 @@ function WorldSpaceAcceleration.WatchEmitPreview(Emitter : Instance, Duration : 
     PreviewConnection = RunService.Heartbeat:Connect(function()
         local Now = os.clock()
 
-        for TrackedEmitter, TrackedExpireAt in PreviewEmitters do
-            if not TrackedEmitter.Parent or Now >= TrackedExpireAt then
-                if TrackedEmitter.Parent then
-                    RestoreEmitter(TrackedEmitter)
+        for trackedEmitter, trackedExpireAt in PreviewEmitters do
+            if not trackedEmitter.Parent or Now >= trackedExpireAt then
+                if trackedEmitter.Parent then
+                    RestoreEmitter(trackedEmitter)
                 end
 
-                PreviewEmitters[TrackedEmitter] = nil
+                PreviewEmitters[trackedEmitter] = nil
             else
-                ApplyToEmitter(TrackedEmitter)
+                ApplyToEmitter(trackedEmitter)
             end
         end
 
@@ -253,24 +259,24 @@ function WorldSpaceAcceleration.EnsureScript()
     Script.Parent = StarterPlayerScripts
 end
 
-function WorldSpaceAcceleration.SetEnabled(Emitter : ParticleEmitter, Enabled : boolean)
-    if Enabled then
-        Emitter:SetAttribute(WorldSpaceAcceleration.ATTRIBUTE_ENABLED, true)
-        local Stored = Emitter:GetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR)
+function WorldSpaceAcceleration.SetEnabled(emitter : ParticleEmitter, enabled : boolean)
+    if enabled then
+        emitter:SetAttribute(WorldSpaceAcceleration.ATTRIBUTE_ENABLED, true)
+        local Stored = emitter:GetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR)
         if typeof(Stored) ~= "Vector3" then
-            Emitter:SetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR, Emitter.Acceleration)
+            emitter:SetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR, emitter.Acceleration)
         end
-        CollectionService:AddTag(Emitter, WorldSpaceAcceleration.TAG)
+        CollectionService:AddTag(emitter, WorldSpaceAcceleration.TAG)
         WorldSpaceAcceleration.EnsureScript()
         return
     end
 
-    PreviewEmitters[Emitter] = nil
-    RestoreEmitter(Emitter)
+    PreviewEmitters[emitter] = nil
+    RestoreEmitter(emitter)
 
-    Emitter:SetAttribute(WorldSpaceAcceleration.ATTRIBUTE_ENABLED, nil)
-    Emitter:SetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR, nil)
-    CollectionService:RemoveTag(Emitter, WorldSpaceAcceleration.TAG)
+    emitter:SetAttribute(WorldSpaceAcceleration.ATTRIBUTE_ENABLED, nil)
+    emitter:SetAttribute(WorldSpaceAcceleration.ATTRIBUTE_VECTOR, nil)
+    CollectionService:RemoveTag(emitter, WorldSpaceAcceleration.TAG)
 end
 
 return WorldSpaceAcceleration

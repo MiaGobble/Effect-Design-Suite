@@ -1,7 +1,6 @@
 local VfxApiInjection = {}
 
-local WorldSpaceAcceleration = require(script.Parent.WorldSpaceAcceleration)
-
+-- Constants
 local CLIENT_SCRIPT_NAME = "EDSSharedPlayEffect.client"
 local SERVER_SCRIPT_NAME = "EDSSharedPlayEffect.server"
 local CONTAINER_NAME = "EffectDesignerSuite"
@@ -12,8 +11,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SharedFolder = ReplicatedStorage:WaitForChild("EffectDesignerSuite")
 local PlayEffect = require(SharedFolder:WaitForChild("PlayEffect"))
 
-shared.PlayEffect = function(Target)
-    return PlayEffect(Target)
+shared.PlayEffect = function(target)
+    return PlayEffect(target)
 end
 ]]
 
@@ -22,30 +21,33 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SharedFolder = ReplicatedStorage:WaitForChild("EffectDesignerSuite")
 local PlayEffect = require(SharedFolder:WaitForChild("PlayEffect"))
 
-shared.PlayEffect = function(Target)
-    return PlayEffect(Target)
+shared.PlayEffect = function(target)
+    return PlayEffect(target)
 end
 ]]
 
-local function ReplaceChild(Container : Instance, Name : string, Template : Instance?)
-    if not Template then
+-- Imports
+local WorldSpaceAcceleration = require(script.Parent.WorldSpaceAcceleration)
+
+local function ReplaceChild(container : Instance, name : string, template : Instance?)
+    if not template then
         return nil
     end
 
-    local Existing = Container:FindFirstChild(Name)
+    local Existing = container:FindFirstChild(name)
     if Existing then
         Existing:Destroy()
     end
 
-    local Clone = Template:Clone()
-    Clone.Name = Name
-    Clone.Parent = Container
+    local Clone = template:Clone()
+    Clone.Name = name
+    Clone.Parent = container
     return Clone
 end
 
-function VfxApiInjection.EnsureSharedModules(BinFolder : Instance)
+function VfxApiInjection.EnsureSharedModules(binFolder : Instance)
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local PlaybackModules = BinFolder:FindFirstChild("PlaybackModules")
+    local PlaybackModules = binFolder:FindFirstChild("PlaybackModules")
     if not PlaybackModules then
         return nil
     end
@@ -60,16 +62,16 @@ function VfxApiInjection.EnsureSharedModules(BinFolder : Instance)
     ReplaceChild(Container, "PlayEffect", PlaybackModules:FindFirstChild("PlayEffect"))
     ReplaceChild(Container, "PartAnimation", PlaybackModules:FindFirstChild("PartAnimation"))
 
-    local Packages = BinFolder:FindFirstChild("Packages")
+    local Packages = binFolder:FindFirstChild("Packages")
     if Packages then
         local Index = Packages:FindFirstChild("_Index")
         if Index and not Container:FindFirstChild("_Index") then
             Index:Clone().Parent = Container
         end
 
-        for _, PackageName in SHARED_PACKAGE_NAMES do
-            if not Container:FindFirstChild(PackageName) then
-                local Source = Packages:FindFirstChild(PackageName)
+        for _, packageName in SHARED_PACKAGE_NAMES do
+            if not Container:FindFirstChild(packageName) then
+                local Source = Packages:FindFirstChild(packageName)
                 if Source then
                     Source:Clone().Parent = Container
                 end
@@ -80,11 +82,11 @@ function VfxApiInjection.EnsureSharedModules(BinFolder : Instance)
     return Container
 end
 
-function VfxApiInjection.Enable(BinFolder : Instance)
+function VfxApiInjection.Enable(binFolder : Instance)
     local StarterPlayer = game:GetService("StarterPlayer")
     local ServerScriptService = game:GetService("ServerScriptService")
 
-    VfxApiInjection.EnsureSharedModules(BinFolder)
+    VfxApiInjection.EnsureSharedModules(binFolder)
 
     local SharedClientScript = StarterPlayer.StarterPlayerScripts:FindFirstChild(CLIENT_SCRIPT_NAME)
     if not SharedClientScript then

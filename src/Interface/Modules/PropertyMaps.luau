@@ -1,5 +1,6 @@
 local PropertyMaps = {}
 
+-- Constants
 PropertyMaps.PARTICLE_PROPERTIES = {
     "Size",
     "Color",
@@ -73,24 +74,24 @@ PropertyMaps.CURVE_PROPERTIES_BY_CLASS = {
     },
 }
 
-function PropertyMaps.NormalizeParticleProperty(PropertyName : string)
-    local LowerName = PropertyName:lower()
+function PropertyMaps.NormalizeParticleProperty(propertyName : string)
+    local LowerName = propertyName:lower()
 
-    for _, Property in PropertyMaps.PARTICLE_PROPERTIES do
-        if Property:lower():sub(1, #LowerName) == LowerName then
-            return Property
+    for _, property in PropertyMaps.PARTICLE_PROPERTIES do
+        if property:lower():sub(1, #LowerName) == LowerName then
+            return property
         end
     end
 
-    return PropertyName
+    return propertyName
 end
 
-function PropertyMaps.GetSelectionClass(Instances : {Instance})
-    if not Instances or #Instances == 0 then
+function PropertyMaps.GetSelectionClass(instances : {Instance})
+    if not instances or #instances == 0 then
         return nil
     end
 
-    local First = Instances[1]
+    local First = instances[1]
 
     if PropertyMaps.COPY_PROPERTIES_BY_CLASS[First.ClassName] then
         return First.ClassName
@@ -107,14 +108,14 @@ function PropertyMaps.GetSelectionClass(Instances : {Instance})
     return nil
 end
 
-function PropertyMaps.GetPropertiesForSelection(Instances : {Instance}, PropertyMap)
-    local ClassName = PropertyMaps.GetSelectionClass(Instances)
+function PropertyMaps.GetPropertiesForSelection(instances : {Instance}, propertyMap)
+    local ClassName = PropertyMaps.GetSelectionClass(instances)
 
     if not ClassName then
         return {}
     end
 
-    return PropertyMap[ClassName] or {}
+    return propertyMap[ClassName] or {}
 end
 
 return PropertyMaps

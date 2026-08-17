@@ -1,68 +1,72 @@
 local ColorPicker = {}
 
+-- Constants
+local PICKER_SIZE = 170
+local VALUE_SLIDER_WIDTH = 18
+local PICKER_GAP = 8
+local VALUE_SLIDER_OFFSET = 6
+
+-- Imports
 local Interface = script.Parent.Parent
 local Bin = Interface.Parent
 local Packages = Bin:FindFirstChild("Packages")
 local Seam = require(Packages:FindFirstChild("Seam"))
 local LocalInput = require(Interface.Modules:FindFirstChild("LocalInput"))
 
-local function Clamp01(Value)
-    return math.clamp(Value, 0, 1)
+local function Clamp01(value)
+    return math.clamp(value, 0, 1)
 end
 
-local function ReadActiveValue(ActiveProperty)
-    if typeof(ActiveProperty) == "boolean" then
-        return ActiveProperty
+local function ReadActiveValue(activeProperty)
+    if typeof(activeProperty) == "boolean" then
+        return activeProperty
     end
 
-    if typeof(ActiveProperty) == "table" and ActiveProperty.Value ~= nil then
-        return ActiveProperty.Value == true
+    if typeof(activeProperty) == "table" and activeProperty.Value ~= nil then
+        return activeProperty.Value == true
     end
 
-    return ActiveProperty ~= false
+    return activeProperty ~= false
 end
 
-function ColorPicker:Init(Scope, Properties)
-    self.H = Scope:Value(0)
-    self.S = Scope:Value(0)
-    self.V = Scope:Value(1)
-    self.IsDraggingPicker = Scope:Value(false)
-    self.IsDraggingValue = Scope:Value(false)
+function ColorPicker:Init(scope, properties)
+    self.H = scope:Value(0)
+    self.S = scope:Value(0)
+    self.V = scope:Value(1)
+    self.IsDraggingPicker = scope:Value(false)
+    self.IsDraggingValue = scope:Value(false)
 
-    local Initial = Properties.Value and Properties.Value.Value or Color3.new(1, 1, 1)
+    local Initial = properties.Value and properties.Value.Value or Color3.new(1, 1, 1)
     self.H.Value, self.S.Value, self.V.Value = Initial:ToHSV()
 end
 
-function ColorPicker:Construct(Scope, Properties)
-    local PickerSize = 170
-    local ValueSliderWidth = 18
-
-    local Frame = Scope:New("Frame", {
-        Parent = Properties.Parent,
-        LayoutOrder = Properties.LayoutOrder,
-        Position = Properties.Position,
-        AnchorPoint = Properties.AnchorPoint,
-        Size = Properties.Size or UDim2.new(1, 0, 0, 198),
+function ColorPicker:Construct(scope, properties)
+    local Frame = scope:New("Frame", {
+        Parent = properties.Parent,
+        LayoutOrder = properties.LayoutOrder,
+        Position = properties.Position,
+        AnchorPoint = properties.AnchorPoint,
+        Size = properties.Size or UDim2.new(1, 0, 0, 198),
         BackgroundTransparency = 1,
     })
 
-    local PickerFrame = Scope:New("Frame", {
+    local PickerFrame = scope:New("Frame", {
         Parent = Frame,
         Position = UDim2.fromOffset(0, 0),
-        Size = UDim2.new(1, -ValueSliderWidth - 8, 0, PickerSize),
+        Size = UDim2.new(1, -VALUE_SLIDER_WIDTH - PICKER_GAP, 0, PICKER_SIZE),
         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
         BorderSizePixel = 0,
         ClipsDescendants = true,
 
         [Seam.Children] = {
-            Scope:New("UICorner", {
+            scope:New("UICorner", {
                 CornerRadius = UDim.new(0, 6),
             }),
-            Scope:New("UIStroke", {
+            scope:New("UIStroke", {
                 Color = Color3.fromRGB(56, 56, 56),
                 Thickness = 1,
             }),
-            Scope:New("UIGradient", {
+            scope:New("UIGradient", {
                 Color = ColorSequence.new({
                     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
                     ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
@@ -74,13 +78,13 @@ function ColorPicker:Construct(Scope, Properties)
                 }),
                 Rotation = 0,
             }),
-            Scope:New("Frame", {
+            scope:New("Frame", {
                 Size = UDim2.fromScale(1, 1),
                 BackgroundColor3 = Color3.new(1, 1, 1),
                 BorderSizePixel = 0,
 
                 [Seam.Children] = {
-                    Scope:New("UIGradient", {
+                    scope:New("UIGradient", {
                         Transparency = NumberSequence.new({
                             NumberSequenceKeypoint.new(0, 0),
                             NumberSequenceKeypoint.new(1, 1),
@@ -92,7 +96,7 @@ function ColorPicker:Construct(Scope, Properties)
         },
     })
 
-    local PickerHitbox = Scope:New("TextButton", {
+    local PickerHitbox = scope:New("TextButton", {
         Parent = PickerFrame,
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
@@ -103,47 +107,47 @@ function ColorPicker:Construct(Scope, Properties)
         ZIndex = 5,
     })
 
-    Scope:New("Frame", {
+    scope:New("Frame", {
         Parent = PickerFrame,
         Size = UDim2.fromOffset(10, 10),
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = Scope:Computed(function(Use)
-            return UDim2.fromScale(Use(self.H), Use(self.S))
+        Position = scope:Computed(function(use)
+            return UDim2.fromScale(use(self.H), use(self.S))
         end),
         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
         BorderSizePixel = 0,
         ZIndex = 6,
 
         [Seam.Children] = {
-            Scope:New("UICorner", {
+            scope:New("UICorner", {
                 CornerRadius = UDim.new(1, 0),
             }),
-            Scope:New("UIStroke", {
+            scope:New("UIStroke", {
                 Color = Color3.fromRGB(0, 0, 0),
                 Thickness = 1,
             }),
         },
     })
 
-    local ValueSlider = Scope:New("Frame", {
+    local ValueSlider = scope:New("Frame", {
         Parent = Frame,
-        Position = UDim2.new(1, -ValueSliderWidth, 0, 0),
-        Size = UDim2.fromOffset(ValueSliderWidth, PickerSize),
+        Position = UDim2.new(1, -VALUE_SLIDER_WIDTH, 0, 0),
+        Size = UDim2.fromOffset(VALUE_SLIDER_WIDTH, PICKER_SIZE),
         BorderSizePixel = 0,
         ClipsDescendants = true,
 
         [Seam.Children] = {
-            Scope:New("UICorner", {
+            scope:New("UICorner", {
                 CornerRadius = UDim.new(0, 6),
             }),
-            Scope:New("UIStroke", {
+            scope:New("UIStroke", {
                 Color = Color3.fromRGB(56, 56, 56),
                 Thickness = 1,
             }),
-            Scope:New("UIGradient", {
-                Color = Scope:Computed(function(Use)
-                    local Hue = Use(self.H)
-                    local Saturation = Use(self.S)
+            scope:New("UIGradient", {
+                Color = scope:Computed(function(use)
+                    local Hue = use(self.H)
+                    local Saturation = use(self.S)
                     local Bright = Color3.fromHSV(Hue, Saturation, 1)
                     return ColorSequence.new({
                         ColorSequenceKeypoint.new(0, Bright),
@@ -155,7 +159,7 @@ function ColorPicker:Construct(Scope, Properties)
         },
     })
 
-    local ValueHitbox = Scope:New("TextButton", {
+    local ValueHitbox = scope:New("TextButton", {
         Parent = ValueSlider,
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
@@ -166,46 +170,46 @@ function ColorPicker:Construct(Scope, Properties)
         ZIndex = 5,
     })
 
-    Scope:New("Frame", {
+    scope:New("Frame", {
         Parent = ValueSlider,
         Size = UDim2.new(1, 0, 0, 2),
         AnchorPoint = Vector2.new(0, 0.5),
-        Position = Scope:Computed(function(Use)
-            return UDim2.fromScale(0, 1 - Use(self.V))
+        Position = scope:Computed(function(use)
+            return UDim2.fromScale(0, 1 - use(self.V))
         end),
         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
         BorderSizePixel = 0,
         ZIndex = 6,
     })
 
-    Scope:New("TextLabel", {
+    scope:New("TextLabel", {
         Parent = Frame,
-        Position = UDim2.fromOffset(0, PickerSize + 6),
+        Position = UDim2.fromOffset(0, PICKER_SIZE + VALUE_SLIDER_OFFSET),
         Size = UDim2.new(1, 0, 0, 18),
         BackgroundTransparency = 1,
         FontFace = Font.fromName("SourceSans"),
         TextSize = 12,
         TextColor3 = Color3.fromRGB(230, 230, 230),
         TextXAlignment = Enum.TextXAlignment.Left,
-        Text = Scope:Computed(function(Use)
-            local H = math.floor(Use(self.H) * 360 + 0.5)
-            local S = math.floor(Use(self.S) * 100 + 0.5)
-            local V = math.floor(Use(self.V) * 100 + 0.5)
+        Text = scope:Computed(function(use)
+            local H = math.floor(use(self.H) * 360 + 0.5)
+            local S = math.floor(use(self.S) * 100 + 0.5)
+            local V = math.floor(use(self.V) * 100 + 0.5)
             return string.format("HSV(%d, %d%%, %d%%)", H, S, V)
         end),
     })
 
-    local function UpdateFromPickerMouse(LocalMouse)
+    local function UpdateFromPickerMouse(localMouse)
         local Width = math.max(1, PickerFrame.AbsoluteSize.X)
         local Height = math.max(1, PickerFrame.AbsoluteSize.Y)
 
-        self.H.Value = Clamp01(LocalMouse.X / Width)
-        self.S.Value = Clamp01(LocalMouse.Y / Height)
+        self.H.Value = Clamp01(localMouse.X / Width)
+        self.S.Value = Clamp01(localMouse.Y / Height)
     end
 
-    local function UpdateFromValueMouse(LocalMouse)
+    local function UpdateFromValueMouse(localMouse)
         local Height = math.max(1, ValueSlider.AbsoluteSize.Y)
-        self.V.Value = Clamp01(1 - (LocalMouse.Y / Height))
+        self.V.Value = Clamp01(1 - (localMouse.Y / Height))
     end
 
     local function StopDragging()
@@ -213,20 +217,20 @@ function ColorPicker:Construct(Scope, Properties)
         self.IsDraggingValue.Value = false
     end
 
-    local PickerDrag = LocalInput.BindPrimaryDrag(Scope, PickerHitbox, function(LocalMouse)
-        UpdateFromPickerMouse(LocalMouse)
+    local PickerDrag = LocalInput.BindPrimaryDrag(scope, PickerHitbox, function(localMouse)
+        UpdateFromPickerMouse(localMouse)
     end, StopDragging)
 
-    local ValueDrag = LocalInput.BindPrimaryDrag(Scope, ValueHitbox, function(LocalMouse)
-        UpdateFromValueMouse(LocalMouse)
+    local ValueDrag = LocalInput.BindPrimaryDrag(scope, ValueHitbox, function(localMouse)
+        UpdateFromValueMouse(localMouse)
     end, StopDragging)
 
-    Scope:AddObject(PickerHitbox.InputBegan:Connect(function(Input)
-        if not ReadActiveValue(Properties.Active) then
+    scope:AddObject(PickerHitbox.InputBegan:Connect(function(input)
+        if not ReadActiveValue(properties.Active) then
             return
         end
 
-        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
             return
         end
 
@@ -234,17 +238,17 @@ function ColorPicker:Construct(Scope, Properties)
         self.IsDraggingPicker.Value = true
         self.IsDraggingValue.Value = false
 
-        local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
+        local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
         local LocalMouse = LocalInput.GetLocalFromScreenPosition(PickerHitbox, ScreenPosition)
-        PickerDrag.Start(LocalMouse, Input)
+        PickerDrag.Start(LocalMouse, input)
     end))
 
-    Scope:AddObject(ValueHitbox.InputBegan:Connect(function(Input)
-        if not ReadActiveValue(Properties.Active) then
+    scope:AddObject(ValueHitbox.InputBegan:Connect(function(input)
+        if not ReadActiveValue(properties.Active) then
             return
         end
 
-        if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
             return
         end
 
@@ -252,26 +256,26 @@ function ColorPicker:Construct(Scope, Properties)
         self.IsDraggingPicker.Value = false
         self.IsDraggingValue.Value = true
 
-        local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
+        local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
         local LocalMouse = LocalInput.GetLocalFromScreenPosition(ValueHitbox, ScreenPosition)
-        ValueDrag.Start(LocalMouse, Input)
+        ValueDrag.Start(LocalMouse, input)
     end))
 
     local function UpdateExternal()
-        if not Properties.Value then
+        if not properties.Value then
             return
         end
 
-        Properties.Value.Value = Color3.fromHSV(self.H.Value, self.S.Value, self.V.Value)
+        properties.Value.Value = Color3.fromHSV(self.H.Value, self.S.Value, self.V.Value)
     end
 
-    Scope:AddObject(Seam.OnChanged(self.H, UpdateExternal))
-    Scope:AddObject(Seam.OnChanged(self.S, UpdateExternal))
-    Scope:AddObject(Seam.OnChanged(self.V, UpdateExternal))
+    scope:AddObject(Seam.OnChanged(self.H, UpdateExternal))
+    scope:AddObject(Seam.OnChanged(self.S, UpdateExternal))
+    scope:AddObject(Seam.OnChanged(self.V, UpdateExternal))
 
-    if Properties.Value then
-        Scope:AddObject(Seam.OnChanged(Properties.Value, function()
-            local H, S, V = Properties.Value.Value:ToHSV()
+    if properties.Value then
+        scope:AddObject(Seam.OnChanged(properties.Value, function()
+            local H, S, V = properties.Value.Value:ToHSV()
             self.H.Value = H
             self.S.Value = S
             self.V.Value = V

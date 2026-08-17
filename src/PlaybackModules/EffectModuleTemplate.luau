@@ -24,12 +24,12 @@ Effect.Identifier = "VISUAL_EFFECT"
 Effect.Lifetime = 1
 
 -- Anything you want to do when the effect is played
-function Effect.Callback(Parent : Instance)
+function Effect.Callback(parent : Instance)
     -- Example: Create a lighting color correction effect
 end
 
 -- Anything you want to do when the effect is cleaned up
-function Effect.Cleanup(Parent : Instance)
+function Effect.Cleanup(parent : Instance)
     -- Example: Destroy the lighting color correction effect created a moment ago
 end
 

@@ -1,5 +1,11 @@
 local SliderInput = {}
 
+-- Constants
+local TRACK_RIGHT_INSET = 96
+local TRACK_HEIGHT = 16
+local TEXT_BOX_OFFSET = 56
+
+-- Imports
 local Interface = script.Parent.Parent
 local Bin = Interface.Parent
 local Packages = Bin:FindFirstChild("Packages")
@@ -7,12 +13,12 @@ local Seam = require(Packages:FindFirstChild("Seam"))
 local Jian = require(Packages:FindFirstChild("Jian"))
 local LocalInput = require(Interface.Modules:FindFirstChild("LocalInput"))
 
-local function Clamp01(Value)
-    return math.clamp(Value, 0, 1)
+local function Clamp01(value)
+    return math.clamp(value, 0, 1)
 end
 
-local function ToNumber(Value)
-    local Number = tonumber(Value)
+local function ToNumber(value)
+    local Number = tonumber(value)
     if Number == nil then
         return nil
     end
@@ -20,35 +26,34 @@ local function ToNumber(Value)
     return Number
 end
 
-function SliderInput:Init(Scope, Properties)
-    self.Dragging = Scope:Value(false)
+function SliderInput:Init(scope, properties)
+    self.Dragging = scope:Value(false)
 
-    if Properties.Value and typeof(Properties.Value.Value) ~= "number" then
-        Properties.Value.Value = ToNumber(Properties.Value.Value) or (Properties.Min or 0)
+    if properties.Value and typeof(properties.Value.Value) ~= "number" then
+        properties.Value.Value = ToNumber(properties.Value.Value) or (properties.Min or 0)
     end
 end
 
-function SliderInput:Construct(Scope, Properties)
-    local Min = Properties.Min or 0
-    local Max = Properties.Max or 1
-    local AllowOutOfRangeText = Properties.AllowOutOfRangeText == true
-    local Step = Properties.Step
-    local TrackRightInset = 96
+function SliderInput:Construct(scope, properties)
+    local Min = properties.Min or 0
+    local Max = properties.Max or 1
+    local AllowOutOfRangeText = properties.AllowOutOfRangeText == true
+    local Step = properties.Step
 
     local function ReadActiveValue()
-        if typeof(Properties.Active) == "boolean" then
-            return Properties.Active
+        if typeof(properties.Active) == "boolean" then
+            return properties.Active
         end
 
-        if typeof(Properties.Active) == "table" and Properties.Active.Value ~= nil then
-            return Properties.Active.Value == true
+        if typeof(properties.Active) == "table" and properties.Active.Value ~= nil then
+            return properties.Active.Value == true
         end
 
-        return Properties.Active ~= false
+        return properties.Active ~= false
     end
 
-    local function FormatNumber(Value)
-        local Rounded = math.floor(Value * 100 + 0.5) / 100
+    local function FormatNumber(value)
+        local Rounded = math.floor(value * 100 + 0.5) / 100
         if math.abs(Rounded - math.floor(Rounded)) < 0.001 then
             return tostring(math.floor(Rounded))
         end
@@ -70,60 +75,60 @@ function SliderInput:Construct(Scope, Properties)
         return math.min(6, #DecimalPart)
     end
 
-    local function RoundToDecimals(Value, Decimals)
-        local Multiplier = 10 ^ Decimals
-        return math.floor((Value * Multiplier) + 0.5) / Multiplier
+    local function RoundToDecimals(value, decimals)
+        local Multiplier = 10 ^ decimals
+        return math.floor((value * Multiplier) + 0.5) / Multiplier
     end
 
-    local function ApplyStep(Value)
+    local function ApplyStep(value)
         if not Step or Step <= 0 then
-            return RoundToDecimals(Value, 6)
+            return RoundToDecimals(value, 6)
         end
 
-        local Steps = math.floor((Value / Step) + 0.5)
+        local Steps = math.floor((value / Step) + 0.5)
         local Snapped = Steps * Step
         return RoundToDecimals(Snapped, GetStepDecimals())
     end
 
-    local Frame = Scope:New("Frame", {
-        Parent = Properties.Parent,
-        LayoutOrder = Properties.LayoutOrder,
-        Position = Properties.Position,
-        AnchorPoint = Properties.AnchorPoint,
-        Size = Properties.Size or UDim2.new(1, 0, 0, 58),
+    local Frame = scope:New("Frame", {
+        Parent = properties.Parent,
+        LayoutOrder = properties.LayoutOrder,
+        Position = properties.Position,
+        AnchorPoint = properties.AnchorPoint,
+        Size = properties.Size or UDim2.new(1, 0, 0, 58),
         BackgroundTransparency = 1,
     })
 
-    Scope:New(Jian.Text, {
+    scope:New(Jian.Text, {
         Parent = Frame,
         Position = UDim2.fromOffset(0, 0),
         Size = UDim2.new(1, 0, 0, 16),
         AutomaticSize = Enum.AutomaticSize.None,
-        Text = Properties.Title or "",
+        Text = properties.Title or "",
         TextSize = 12,
         TextXAlignment = Enum.TextXAlignment.Left,
         Active = false,
     })
 
-    local SliderTrack = Scope:New("Frame", {
+    local SliderTrack = scope:New("Frame", {
         Parent = Frame,
         Position = UDim2.fromOffset(0, 20),
-        Size = UDim2.new(1, -TrackRightInset, 0, 16),
+        Size = UDim2.new(1, -TRACK_RIGHT_INSET, 0, TRACK_HEIGHT),
         BackgroundColor3 = Color3.fromRGB(36, 36, 36),
         BorderSizePixel = 0,
 
         [Seam.Children] = {
-            Scope:New("UICorner", {
+            scope:New("UICorner", {
                 CornerRadius = UDim.new(0, 6),
             }),
-            Scope:New("UIStroke", {
+            scope:New("UIStroke", {
                 Color = Color3.fromRGB(56, 56, 56),
                 Thickness = 1,
             }),
         },
     })
 
-    Scope:New(Jian.Text, {
+    scope:New(Jian.Text, {
         Parent = Frame,
         Position = UDim2.fromOffset(0, 40),
         Size = UDim2.fromOffset(56, 14),
@@ -133,9 +138,9 @@ function SliderInput:Construct(Scope, Properties)
         Active = false,
     })
 
-    Scope:New(Jian.Text, {
+    scope:New(Jian.Text, {
         Parent = Frame,
-        Position = UDim2.new(1, -TrackRightInset - 56, 0, 40),
+        Position = UDim2.new(1, -TRACK_RIGHT_INSET - TEXT_BOX_OFFSET, 0, 40),
         Size = UDim2.fromOffset(56, 14),
         Text = FormatNumber(Max),
         TextSize = 10,
@@ -143,10 +148,10 @@ function SliderInput:Construct(Scope, Properties)
         Active = false,
     })
 
-    Scope:New("Frame", {
+    scope:New("Frame", {
         Parent = SliderTrack,
-        Size = Scope:Computed(function(Use)
-            local Current = Properties.Value and Use(Properties.Value) or Min
+        Size = scope:Computed(function(use)
+            local Current = properties.Value and use(properties.Value) or Min
             local Alpha = Clamp01((Current - Min) / (Max - Min))
             return UDim2.fromScale(Alpha, 1)
         end),
@@ -154,77 +159,77 @@ function SliderInput:Construct(Scope, Properties)
         BorderSizePixel = 0,
 
         [Seam.Children] = {
-            Scope:New("UICorner", {
+            scope:New("UICorner", {
                 CornerRadius = UDim.new(0, 6),
             }),
         },
     })
 
-    local function ProcessLocalInput(LocalPositionX)
+    local function ProcessLocalInput(localPositionX)
         local AbsoluteSize = math.max(1, SliderTrack.AbsoluteSize.X)
-        local Alpha = Clamp01(LocalPositionX / AbsoluteSize)
+        local Alpha = Clamp01(localPositionX / AbsoluteSize)
         local Value = Min + (Max - Min) * Alpha
 
-        if Properties.Value then
-            Properties.Value.Value = ApplyStep(Value)
+        if properties.Value then
+            properties.Value.Value = ApplyStep(Value)
         end
     end
 
-    local DragSession = LocalInput.BindPrimaryDrag(Scope, SliderTrack, function(LocalMouse)
-        ProcessLocalInput(LocalMouse.X)
+    local DragSession = LocalInput.BindPrimaryDrag(scope, SliderTrack, function(localMouse)
+        ProcessLocalInput(localMouse.X)
     end, function()
         self.Dragging.Value = false
     end)
 
-    local function StartDrag(StartLocalPosition, Input)
+    local function StartDrag(startLocalPosition, input)
         self.Dragging.Value = true
-        DragSession.Start(StartLocalPosition, Input)
+        DragSession.Start(startLocalPosition, input)
     end
 
-    local Hitbox = Scope:New("TextButton", {
+    local Hitbox = scope:New("TextButton", {
         Parent = SliderTrack,
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         Text = "",
         AutoButtonColor = false,
-        Active = Properties.Active,
+        Active = properties.Active,
     })
 
-    Scope:AddObject(Hitbox.InputBegan:Connect(function(Input)
+    scope:AddObject(Hitbox.InputBegan:Connect(function(input)
         if not ReadActiveValue() then
             return
         end
 
-        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local ScreenPosition = Vector2.new(Input.Position.X, Input.Position.Y)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
             local LocalMouse = LocalInput.GetLocalFromScreenPosition(SliderTrack, ScreenPosition)
             ProcessLocalInput(LocalMouse.X)
-            StartDrag(LocalMouse, Input)
+            StartDrag(LocalMouse, input)
         end
     end))
 
-    local InputState = Scope:Value("0")
+    local InputState = scope:Value("0")
 
-    Scope:AddObject(Seam.OnChanged(Properties.Value, function()
-        if Properties.Value then
-            InputState.Value = FormatNumber(Properties.Value.Value)
+    scope:AddObject(Seam.OnChanged(properties.Value, function()
+        if properties.Value then
+            InputState.Value = FormatNumber(properties.Value.Value)
         end
     end))
 
-    local NumberBox = Scope:New(Jian.TextBox, {
+    local NumberBox = scope:New(Jian.TextBox, {
         Parent = Frame,
         Position = UDim2.new(1, -88, 0, 13),
         Size = UDim2.fromOffset(88, 30),
         Text = InputState,
-        Active = Properties.Active,
+        Active = properties.Active,
         PlaceholderText = tostring(Min),
     })
 
-    Scope:AddObject(NumberBox.FocusLost:Connect(function()
+    scope:AddObject(NumberBox.FocusLost:Connect(function()
         local NumberValue = ToNumber(InputState.Value)
 
         if NumberValue == nil then
-            InputState.Value = tostring(Properties.Value and Properties.Value.Value or Min)
+            InputState.Value = tostring(properties.Value and properties.Value.Value or Min)
             return
         end
 
@@ -234,15 +239,15 @@ function SliderInput:Construct(Scope, Properties)
 
         NumberValue = ApplyStep(NumberValue)
 
-        if Properties.Value then
-            Properties.Value.Value = NumberValue
+        if properties.Value then
+            properties.Value.Value = NumberValue
         end
 
         InputState.Value = FormatNumber(NumberValue)
     end))
 
-    if Properties.Value then
-        InputState.Value = FormatNumber(Properties.Value.Value)
+    if properties.Value then
+        InputState.Value = FormatNumber(properties.Value.Value)
     end
 
     return Frame
