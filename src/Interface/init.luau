@@ -853,6 +853,7 @@ function Interface:Init() : DockWidgetPluginGui
 
     local function RefreshAssetGrid()
         ClearAssetGrid()
+        AssetGridFrame.CanvasPosition = Vector2.zero
 
         local Category = SelectedAssetCategory.Value
 
