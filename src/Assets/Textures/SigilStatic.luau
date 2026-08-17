@@ -147,17 +147,7 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 12364247576753
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 86680616725095
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364253520751
 	},
 	{
 		Type = "Sigil",
@@ -327,27 +317,12 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 12364200115219
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364246886754
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 71338214928699
 	},
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
 		TextureId = 92843011365884
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12369039805933
 	},
 	{
 		Type = "Sigil",
@@ -368,41 +343,6 @@ return {
 		Type = "Sigil",
 		FlipbookType = 1,
 		TextureId = 111589920618215
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364218775205
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364262955745
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364220729202
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12369031569655
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364211737209
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364211145210
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364265215742
 	},
 	{
 		Type = "Sigil",
@@ -522,16 +462,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 123899463140828130
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364212366208
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 81400439625843
 	},
 	{
@@ -567,11 +497,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 123899456980928130
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 139136564191390
 	},
 	{
@@ -603,16 +528,6 @@ return {
 		Type = "Sigil",
 		FlipbookType = 1,
 		TextureId = 15501840173
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364194441220
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364714474398
 	},
 	{
 		Type = "Sigil",
@@ -672,27 +587,12 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 12364209524212
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 15501928209
 	},
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 12364244895757
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 17230597915
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364220017203
 	},
 	{
 		Type = "Sigil",
@@ -727,11 +627,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 12364252868752
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 14197229649
 	},
 	{
@@ -757,17 +652,7 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 1236369359615
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 11902401640
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 123899468140728130
 	},
 	{
 		Type = "Sigil",
@@ -818,11 +703,6 @@ return {
 		Type = "Sigil",
 		FlipbookType = 1,
 		TextureId = 82806823662496
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364262179746
 	},
 	{
 		Type = "Sigil",
@@ -922,11 +802,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 123899505200128130
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 12362771118
 	},
 	{
@@ -978,11 +853,6 @@ return {
 		Type = "Sigil",
 		FlipbookType = 1,
 		TextureId = 9533264910
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 1.2389942584021357e28
 	},
 	{
 		Type = "Sigil",
@@ -1187,11 +1057,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 1.2389945119395405e30
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 91738483473469
 	},
 	{
@@ -1287,32 +1152,12 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 12364255494748
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 107418854370558
 	},
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 12364706697402
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364316379735
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 12403144779
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364265934741
 	},
 	{
 		Type = "Sigil",
@@ -1437,11 +1282,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 123899482010528130
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 12402882116
 	},
 	{
@@ -1492,16 +1332,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 12364246161755
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 123647725582093
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 16878132157
 	},
 	{
@@ -1522,17 +1352,7 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 123899498600228130
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 12179045702
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12369038116935
 	},
 	{
 		Type = "Sigil",
@@ -1567,11 +1387,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 12364254855749
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 13556803456
 	},
 	{
@@ -1593,11 +1408,6 @@ return {
 		Type = "Sigil",
 		FlipbookType = 1,
 		TextureId = 91448842457982
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 12364254305750
 	},
 	{
 		Type = "Sigil",
@@ -1872,11 +1682,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 1236408977746
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 81081149331665
 	},
 	{
@@ -2097,11 +1902,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 1236407514554
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 136488378522949
 	},
 	{
@@ -2252,11 +2052,6 @@ return {
 	{
 		Type = "Sigil",
 		FlipbookType = 1,
-		TextureId = 123899492890328130
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
 		TextureId = 110771358316729
 	},
 	{
@@ -2308,11 +2103,6 @@ return {
 		Type = "Sigil",
 		FlipbookType = 1,
 		TextureId = 14197297037
-	},
-	{
-		Type = "Sigil",
-		FlipbookType = 1,
-		TextureId = 123899475660628130
 	},
 	{
 		Type = "Sigil",

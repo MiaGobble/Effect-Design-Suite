@@ -7,11 +7,6 @@ return {
 	{
 		Type = "Misc",
 		FlipbookType = 4,
-		TextureId = 100753447239359
-	},
-	{
-		Type = "Misc",
-		FlipbookType = 4,
 		TextureId = 16511653838
 	},
 	{

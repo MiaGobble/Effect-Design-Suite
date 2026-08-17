@@ -122,16 +122,6 @@ return {
 	{
 		Type = "Shine",
 		FlipbookType = 4,
-		TextureId = 17387207972
-	},
-	{
-		Type = "Shine",
-		FlipbookType = 4,
-		TextureId = 14454141205
-	},
-	{
-		Type = "Shine",
-		FlipbookType = 4,
 		TextureId = 17517651294
 	},
 	{
@@ -143,11 +133,6 @@ return {
 		Type = "Shine",
 		FlipbookType = 4,
 		TextureId = 137439303725875
-	},
-	{
-		Type = "Shine",
-		FlipbookType = 4,
-		TextureId = 15652409265
 	},
 	{
 		Type = "Shine",

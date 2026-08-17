@@ -462,11 +462,6 @@ return {
 	{
 		Type = "Slash",
 		FlipbookType = 4,
-		TextureId = 14522749246
-	},
-	{
-		Type = "Slash",
-		FlipbookType = 4,
 		TextureId = 13580350719
 	},
 	{
