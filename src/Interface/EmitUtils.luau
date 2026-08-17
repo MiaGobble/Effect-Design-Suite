@@ -21,6 +21,15 @@ local PathPreviewHeartbeatElapsed = 0
 local LastPathPreviewSignature = nil
 local PathPreviewInstanceIds = setmetatable({}, {__mode = "k"})
 local NextPathPreviewInstanceId = 0
+local PathPreviewDescendantConnection = nil
+
+local function ConfigurePreviewInstance(Instance : Instance)
+    Instance.Archivable = false
+
+    if Instance:IsA("BasePart") then
+        Instance.Locked = true
+    end
+end
 
 local function DisconnectPathPreviewConnections()
     for _, Connection in PathPreviewConnections do
@@ -32,6 +41,21 @@ local function DisconnectPathPreviewConnections()
     table.clear(PathPreviewConnections)
 end
 
+local function BindPreviewFolder(Folder : Folder)
+    Folder.Archivable = false
+    ConfigurePreviewInstance(Folder)
+
+    if PathPreviewDescendantConnection then
+        PathPreviewDescendantConnection:Disconnect()
+    end
+
+    PathPreviewDescendantConnection = Folder.DescendantAdded:Connect(ConfigurePreviewInstance)
+
+    for _, Descendant in Folder:GetDescendants() do
+        ConfigurePreviewInstance(Descendant)
+    end
+end
+
 local function GetPreviewFolder()
     if PathPreviewFolder and PathPreviewFolder.Parent then
         return PathPreviewFolder
@@ -41,9 +65,11 @@ local function GetPreviewFolder()
     if not Folder then
         Folder = Instance.new("Folder")
         Folder.Name = "EffectDesignerSuitePathPreview"
+        Folder.Archivable = false
         Folder.Parent = workspace
     end
 
+    BindPreviewFolder(Folder)
     PathPreviewFolder = Folder
     return Folder
 end
