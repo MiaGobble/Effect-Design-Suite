@@ -25,6 +25,110 @@ local CurveEditor = require(Components:FindFirstChild("CurveEditor"))
 local ColorPicker = require(Components:FindFirstChild("ColorPicker"))
 local ColorSequenceEditor = require(Components:FindFirstChild("ColorSequenceEditor"))
 
+local function TrimVersionText(Text : string) : string
+    Text = string.gsub(Text, "^%s+", "")
+    Text = string.gsub(Text, "%s+$", "")
+    return Text
+end
+
+local function ParseVersionParts(Text : string) : {number}?
+    local Clean = string.match(Text, "^v?(%d+[%.%d]*)$")
+    if not Clean then
+        return nil
+    end
+
+    local Parts = {}
+    for Number in string.gmatch(Clean, "%d+") do
+        table.insert(Parts, tonumber(Number) or 0)
+    end
+
+    if #Parts == 0 then
+        return nil
+    end
+
+    return Parts
+end
+
+local function IsRemoteVersionNewer(RemoteText : string, LocalText : string) : boolean
+    local RemoteParts = ParseVersionParts(RemoteText)
+    local LocalParts = ParseVersionParts(LocalText)
+    if not RemoteParts or not LocalParts then
+        return false
+    end
+
+    local Count = math.max(#RemoteParts, #LocalParts)
+    for Index = 1, Count do
+        local RemotePart = RemoteParts[Index] or 0
+        local LocalPart = LocalParts[Index] or 0
+        if RemotePart > LocalPart then
+            return true
+        elseif RemotePart < LocalPart then
+            return false
+        end
+    end
+
+    return false
+end
+
+local function ReadLocalVersion() : string?
+    local VersionObject = Bin:FindFirstChild("VERSION.txt") or Bin:FindFirstChild("VERSION")
+    if not VersionObject then
+        return nil
+    end
+
+    local Text = nil
+    if VersionObject:IsA("StringValue") then
+        Text = VersionObject.Value
+    elseif VersionObject:IsA("LuaSourceContainer") then
+        Text = VersionObject.Source
+    end
+
+    if typeof(Text) ~= "string" then
+        return nil
+    end
+
+    Text = TrimVersionText(Text)
+    if Text == "" then
+        return nil
+    end
+
+    return Text
+end
+
+local function IsHttpPermissionError(Error) : boolean
+    local Text = string.lower(tostring(Error))
+    return string.find(Text, "http requests are not enabled", 1, true) ~= nil
+        or string.find(Text, "permission", 1, true) ~= nil
+        or string.find(Text, "not allowed", 1, true) ~= nil
+        or string.find(Text, "trust check", 1, true) ~= nil
+        or string.find(Text, "aborted", 1, true) ~= nil
+end
+
+local function FetchGitHubVersion() : (string?, boolean)
+    local Urls = {
+        "https://raw.githubusercontent.com/MiaGobble/Effect-Design-Suite/main/src/VERSION.txt",
+        "https://raw.githubusercontent.com/MiaGobble/Effect-Design-Suite/refs/heads/main/src/VERSION.txt",
+        "https://raw.githubusercontent.com/MiaGobble/Effect-Design-Suite/main/VERSION.txt",
+    }
+
+    for _, Url in Urls do
+        local Success, Result = pcall(function()
+            return HttpService:GetAsync(Url)
+        end)
+
+        if Success and typeof(Result) == "string" then
+            local Text = TrimVersionText(Result)
+            if Text ~= "" and ParseVersionParts(Text) then
+                return Text, false
+            end
+        elseif not Success and IsHttpPermissionError(Result) then
+            return nil, true
+        end
+    end
+
+    return nil, false
+end
+
 local InterfaceScope = nil
 local PendingPreviewLoads = {}
 
@@ -704,6 +808,47 @@ function Interface:Init() : DockWidgetPluginGui
             }),
         },
     })
+
+    local UpdateWarningText = Scope:Value("")
+    Scope:New("TextLabel", {
+        Parent = Container,
+        LayoutOrder = -1,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Text = UpdateWarningText,
+        TextWrapped = true,
+        TextColor3 = Color3.fromRGB(255, 196, 72),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
+        Visible = Scope:Computed(function(Use)
+            return Use(UpdateWarningText) ~= ""
+        end),
+    })
+
+    task.spawn(function()
+        local RemoteVersion, PermissionDenied = FetchGitHubVersion()
+        if PermissionDenied then
+            UpdateWarningText.Value = "This plugin does not have HTTP permissions and cannot check for updates."
+            return
+        end
+
+        local LocalVersion = ReadLocalVersion()
+        if not LocalVersion or not RemoteVersion then
+            return
+        end
+
+        if IsRemoteVersionNewer(RemoteVersion, LocalVersion) then
+            UpdateWarningText.Value = string.format(
+                "Update available: %s (you have %s). Please update Effect Designer Suite.",
+                RemoteVersion,
+                LocalVersion
+            )
+        end
+    end)
 
     Scope:New(Jian.Text, {
         Parent = Container,
