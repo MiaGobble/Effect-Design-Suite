@@ -3,6 +3,7 @@ local Interface = {}
 local Selection = game:GetService("Selection")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
+local ContentProvider = game:GetService("ContentProvider")
 
 local Bin = script.Parent
 local Objects = Bin:FindFirstChild("Objects")
@@ -24,6 +25,7 @@ local ColorPicker = require(Components:FindFirstChild("ColorPicker"))
 local ColorSequenceEditor = require(Components:FindFirstChild("ColorSequenceEditor"))
 
 local InterfaceScope = nil
+local PendingPreviewLoads = {}
 
 local function FormatTextureId(TextureId : number | string)
     return "rbxassetid://" .. tostring(TextureId)
@@ -139,23 +141,59 @@ local function CreatePreviewFrame(Scope, PreviewEntries, Asset, LayoutOrder : nu
         ImageScaleType = Enum.ScaleType.Stretch
     end
 
+    local ContentId = FormatTextureId(Asset.TextureId)
     local PreviewImage = Scope:New("ImageLabel", {
         Parent = ImageParent,
         BackgroundTransparency = 1,
-        Image = FormatTextureId(Asset.TextureId),
+        Image = ContentId,
+        ImageTransparency = 1,
         ScaleType = ImageScaleType,
         Size = UDim2.fromScale(GridSize, GridSize),
     })
 
+    local LoadingIndicator = Scope:New("TextLabel", {
+        Parent = PreviewWindow,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Size = UDim2.fromScale(1, 1),
+        Text = "Loading",
+        TextColor3 = Color3.fromRGB(168, 168, 168),
+        TextSize = 12,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        TextYAlignment = Enum.TextYAlignment.Center,
+        ZIndex = 3,
+    })
+
+    local PreviewEntry = nil
+
     if Animate == true and GridSize > 1 then
-        table.insert(PreviewEntries, {
+        PreviewEntry = {
             Image = PreviewImage,
             GridSize = GridSize,
             TotalFrames = GridSize * GridSize,
             StartedAt = os.clock(),
             FramesPerSecond = GridSize == 8 and 20 or 12,
-        })
+        }
+        table.insert(PreviewEntries, PreviewEntry)
     end
+
+    table.insert(PendingPreviewLoads, {
+        Image = PreviewImage,
+        Indicator = LoadingIndicator,
+        PreviewEntry = PreviewEntry,
+        ContentId = ContentId,
+        Preloaded = false,
+    })
+
+    local PendingEntry = PendingPreviewLoads[#PendingPreviewLoads]
+
+    task.defer(function()
+        pcall(function()
+            ContentProvider:PreloadAsync({PendingEntry.ContentId})
+        end)
+        PendingEntry.Preloaded = true
+    end)
 
     return PreviewWindow
 end
@@ -1067,14 +1105,47 @@ function Interface:Init() : DockWidgetPluginGui
         IsAssetBrowserInitialized = true
     end
 
+    local function IsPreviewContentReady(Entry)
+        if Entry.Preloaded or Entry.Image.IsLoaded then
+            return true
+        end
+
+        local Success, Status = pcall(function()
+            return ContentProvider:GetAssetFetchStatus(Entry.ContentId)
+        end)
+
+        return Success and (Status == Enum.AssetFetchStatus.Success or Status == Enum.AssetFetchStatus.Failure)
+    end
+
     Scope:AddObject(RunService.RenderStepped:Connect(function()
         if not AssetWidget.Enabled then
             return
         end
 
+        for Index = #PendingPreviewLoads, 1, -1 do
+            local Entry = PendingPreviewLoads[Index]
+
+            if Entry.Image.Parent == nil then
+                table.remove(PendingPreviewLoads, Index)
+            elseif IsPreviewContentReady(Entry) then
+                Entry.Indicator.Visible = false
+                Entry.Image.ImageTransparency = 0
+
+                if Entry.PreviewEntry then
+                    Entry.PreviewEntry.StartedAt = os.clock()
+                end
+
+                table.remove(PendingPreviewLoads, Index)
+            end
+        end
+
         local Now = os.clock()
 
         for _, Preview in PreviewEntries do
+            if Preview.Image.ImageTransparency ~= 0 then
+                continue
+            end
+
             local FrameIndex = math.floor((Now - Preview.StartedAt) * Preview.FramesPerSecond) % Preview.TotalFrames
             local Column = FrameIndex % Preview.GridSize
             local Row = math.floor(FrameIndex / Preview.GridSize)
