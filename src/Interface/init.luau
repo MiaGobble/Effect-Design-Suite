@@ -99,11 +99,37 @@ local function CreatePreviewFrame(Scope, PreviewEntries, Asset, LayoutOrder : nu
     })
 
     local GridSize = GetFlipbookGridSize(Asset.FlipbookType)
+    local ImageParent = PreviewWindow
+
+    if GridSize > 1 then
+        ImageParent = Scope:New("Frame", {
+            Parent = PreviewWindow,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromScale(1, 1),
+            BackgroundTransparency = 1,
+            ClipsDescendants = true,
+
+            [Seam.Children] = {
+                Scope:New("UIAspectRatioConstraint", {
+                    AspectRatio = 1,
+                    AspectType = Enum.AspectType.FitWithinMaxSize,
+                }),
+            },
+        })
+    end
+
+    local ImageScaleType = Enum.ScaleType.Fit
+
+    if GridSize > 1 then
+        ImageScaleType = Enum.ScaleType.Stretch
+    end
+
     local PreviewImage = Scope:New("ImageLabel", {
-        Parent = PreviewWindow,
+        Parent = ImageParent,
         BackgroundTransparency = 1,
         Image = FormatTextureId(Asset.TextureId),
-        ScaleType = Enum.ScaleType.Stretch,
+        ScaleType = ImageScaleType,
         Size = UDim2.fromScale(GridSize, GridSize),
     })
 
