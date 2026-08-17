@@ -18,6 +18,7 @@ local Modules = script:FindFirstChild("Modules")
 local PropertyMaps = require(Modules:FindFirstChild("PropertyMaps"))
 local EffectOps = require(Modules:FindFirstChild("EffectOps"))
 local VfxApiInjection = require(Modules:FindFirstChild("VfxApiInjection"))
+local WorldSpaceAcceleration = require(Modules:FindFirstChild("WorldSpaceAcceleration"))
 local Dropdown = require(Components:FindFirstChild("Dropdown"))
 local SliderInput = require(Components:FindFirstChild("SliderInput"))
 local CurveEditor = require(Components:FindFirstChild("CurveEditor"))
@@ -378,6 +379,16 @@ function Interface:Init() : DockWidgetPluginGui
         return false
     end)
 
+    local HasParticleEmitterSelection = Scope:Computed(function(Use)
+        for _, Instance in Use(States.CurrentlySelected) do
+            if Instance:IsA("ParticleEmitter") then
+                return true
+            end
+        end
+
+        return false
+    end)
+
     local HasReplaceTargets = Scope:Computed(function(Use)
         local RawSelection = Use(States.RawSelection)
         local CurrentSelection = Use(States.CurrentlySelected)
@@ -587,6 +598,8 @@ function Interface:Init() : DockWidgetPluginGui
 
     local PreviewPathsEnabled = Scope:Value(false)
     local InjectVfxApiEnabled = Scope:Value(false)
+    local WorldSpaceAccelEnabled = Scope:Value(false)
+    local IsSyncingWorldSpaceAccel = false
     local CopiedValue = Scope:Value(nil)
     local SelectedAsset = Scope:Value(nil)
     local SelectedAssetCategory = Scope:Value(nil)
@@ -1576,6 +1589,16 @@ function Interface:Init() : DockWidgetPluginGui
         Value = InjectVfxApiEnabled,
     })
 
+    local WorldSpaceAccelCheckboxRow = CreateRow(Scope, 6)
+    Scope:New(Jian.Checkbox, {
+        Parent = WorldSpaceAccelCheckboxRow,
+        Position = UDim2.fromOffset(0, 8),
+        Size = UDim2.new(1, 0, 0, 20),
+        Title = "World space acceleration for LockedToPart",
+        Active = HasParticleEmitterSelection,
+        Value = WorldSpaceAccelEnabled,
+    })
+
     local OpenAssetPresetsButton = CreateActionButton(Scope, 2, "Presets", true, function()
         EnsureAssetBrowserInitialized()
 
@@ -1697,17 +1720,40 @@ function Interface:Init() : DockWidgetPluginGui
             InsertEffectModuleTemplateButton,
             PreviewPathsCheckboxRow,
             InjectApiCheckboxRow,
+            WorldSpaceAccelCheckboxRow,
         },
     })
+
+    local function RefreshWorldSpaceAccelCheckbox()
+        IsSyncingWorldSpaceAccel = true
+
+        local HasEnabled = false
+        local HasDisabled = false
+
+        for _, Instance in States.CurrentlySelected.Value do
+            if Instance:IsA("ParticleEmitter") then
+                if WorldSpaceAcceleration.IsEnabled(Instance) then
+                    HasEnabled = true
+                else
+                    HasDisabled = true
+                end
+            end
+        end
+
+        WorldSpaceAccelEnabled.Value = HasEnabled and not HasDisabled
+        IsSyncingWorldSpaceAccel = false
+    end
 
     local function RefreshCoreFields()
         SyncSelectionAttribute(EmitCountText, "EmitCount")
         SyncSelectionAttribute(EmitDelayText, "EmitDelay")
         SyncSelectionAttribute(EmitDurationText, "EmitDuration")
+        RefreshWorldSpaceAccelCheckbox()
     end
 
     RefreshCoreFields()
     Scope:AddObject(Seam.OnChanged(States.PrimarySelected, RefreshCoreFields))
+    Scope:AddObject(Seam.OnChanged(States.CurrentlySelected, RefreshWorldSpaceAccelCheckbox))
     Scope:AddObject(Seam.OnChanged(States.RepeatEmitDelay, function()
         RepeatEmitDelayText.Value = tostring(States.RepeatEmitDelay.Value)
     end))
@@ -1726,6 +1772,17 @@ function Interface:Init() : DockWidgetPluginGui
             VfxApiInjection.Enable(Bin)
         else
             VfxApiInjection.Disable()
+        end
+    end))
+    Scope:AddObject(Seam.OnChanged(WorldSpaceAccelEnabled, function()
+        if IsSyncingWorldSpaceAccel then
+            return
+        end
+
+        for _, Instance in States.CurrentlySelected.Value do
+            if Instance:IsA("ParticleEmitter") then
+                WorldSpaceAcceleration.SetEnabled(Instance, WorldSpaceAccelEnabled.Value)
+            end
         end
     end))
 

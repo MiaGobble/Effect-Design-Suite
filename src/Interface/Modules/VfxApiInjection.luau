@@ -1,5 +1,7 @@
 local VfxApiInjection = {}
 
+local WorldSpaceAcceleration = require(script.Parent.WorldSpaceAcceleration)
+
 local CLIENT_SCRIPT_NAME = "EDSSharedPlayEffect.client"
 local SERVER_SCRIPT_NAME = "EDSSharedPlayEffect.server"
 local CONTAINER_NAME = "EffectDesignerSuite"
@@ -58,6 +60,8 @@ function VfxApiInjection.Enable(BinFolder : Instance)
         SharedServerScript.Source = SERVER_SCRIPT_SOURCE
         SharedServerScript.Parent = ServerScriptService
     end
+
+    WorldSpaceAcceleration.EnsureScript()
 end
 
 function VfxApiInjection.Disable()

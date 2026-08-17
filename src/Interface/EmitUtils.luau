@@ -10,6 +10,7 @@ local PlayEffect = require(Bin.PlaybackModules:FindFirstChild("PlayEffect"))
 local States = require(Objects:FindFirstChild("States"))
 local Packages = Bin:FindFirstChild("Packages")
 local Seam = require(Packages:FindFirstChild("Seam"))
+local WorldSpaceAcceleration = require(script.Parent:FindFirstChild("Modules"):FindFirstChild("WorldSpaceAcceleration"))
 
 -- Variables
 local RepeatEmitConnection = nil
@@ -457,13 +458,11 @@ local function BuildParticleEmitterPathPreview(Emitter : ParticleEmitter, Parent
     end
 
     local function DrawTrajectory(LocalOffset : Vector3, Direction : Vector3, Speed : number)
-        -- When LockedToPart is enabled, acceleration is applied in the
-        -- emitter's local space and the whole path stays attached to it.
         local Position = if LockedToPart then LocalOffset else EmitterCFrame:PointToWorldSpace(LocalOffset)
         local Velocity = if LockedToPart
             then Direction.Unit * Speed
             else EmitterCFrame:VectorToWorldSpace(Direction).Unit * Speed + InheritedVelocity
-        local Acceleration = Emitter.Acceleration
+        local Acceleration = WorldSpaceAcceleration.GetSimulationAcceleration(Emitter, EmitterCFrame, LockedToPart)
         local LastWorldPosition = ToWorldPosition(Position)
         local MinLifetimePosition = nil
 
@@ -659,6 +658,8 @@ local function GetParticlePathSignature(Emitter : ParticleEmitter)
         tostring(Emitter.Lifetime),
         tostring(Emitter.SpreadAngle),
         tostring(Emitter.Acceleration),
+        tostring(WorldSpaceAcceleration.GetAuthoredAcceleration(Emitter)),
+        tostring(WorldSpaceAcceleration.IsEnabled(Emitter)),
         tostring(Emitter.Drag),
         tostring(Emitter.VelocityInheritance),
         tostring(Emitter.LockedToPart),
@@ -754,6 +755,13 @@ function EmitUtils:EmitCurrent(ForcedInstances : {Instance}?)
     local SelectedInstances = ForcedInstances or States.CurrentlySelected.Value
 
     for _, Instance in SelectedInstances do
+        if Instance:IsA("ParticleEmitter") then
+            local Duration = (Instance:GetAttribute("EmitDuration") or 0)
+                + (Instance:GetAttribute("EmitDelay") or 0)
+                + Instance.Lifetime.Max
+            WorldSpaceAcceleration.WatchEmitPreview(Instance, Duration)
+        end
+
         local _, WidgetParentPayload = PlayEffect(Instance, true)
 
         if WidgetParentPayload then
