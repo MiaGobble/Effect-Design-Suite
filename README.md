@@ -21,7 +21,7 @@ Create custom color sequences in the Oklab color space, which has more transitio
 Number sequences (such as size) can be edited in the custom curve editor, which allows you to create quadratic curves for anything you make.
 
 # Get Started
-Get the plugin for $4.99 and receive lifetime free updates!
+Get the plugin for FREE and receive lifetime updates!
 
 https://create.roblox.com/store/asset/109890065116916/Effect-Designer-Suite
 
