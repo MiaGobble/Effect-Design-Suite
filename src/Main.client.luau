@@ -8,27 +8,30 @@ local ACCEPTABLE_INSTANCE_TYPES = {
     "Trail",
 }
 local TOOLBAR_NAME = "Effect Designer Suite"
-local TOOLBAR_BUTTON_IMAGE = "rbxassetid://140043496156959"
 local TOOLBAR_BUTTONS = {
     {
         Key = "Core",
         Name = "Core",
         ToolTip = "Effect Designer Suite — Core",
+        Image = "rbxassetid://140043496156959",
     },
     {
         Key = "Editing",
         Name = "Editing",
         ToolTip = "Effect Designer Suite — Editing",
+        Image = "rbxassetid://90017125667882",
     },
     {
         Key = "Advanced",
         Name = "Advanced",
         ToolTip = "Effect Designer Suite — Advanced",
+        Image = "rbxassetid://136044962311445",
     },
     {
         Key = "Presets",
         Name = "Presets",
         ToolTip = "Effect Designer Suite — Presets",
+        Image = "rbxassetid://102514759395148",
     },
 }
 
