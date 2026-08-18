@@ -67,7 +67,7 @@ local function Init()
         local Button = Scope:New(Jian.ToolbarButton, {
             ToolTip = buttonConfig.ToolTip,
             Name = buttonConfig.Name,
-            Image = TOOLBAR_BUTTON_IMAGE,
+            Image = buttonConfig.Image,
             Toolbar = ThisToolbar,
         }) :: PluginToolbarButton
 
@@ -81,6 +81,10 @@ local function Init()
 
     SelectionService.SelectionChanged:Connect(function()
         task.wait()
+        if States.IsPickingInstance.Value then
+            return
+        end
+
         local SelectedInstances = SelectionService:Get()
         local ValidInstances = {}
 

@@ -35,6 +35,7 @@ local States = require(Objects:FindFirstChild("States"))
 local AssetUtils = require(Interface:FindFirstChild("AssetUtils"))
 local Modules = Interface:FindFirstChild("Modules")
 local UiKit = require(Modules:FindFirstChild("UiKit"))
+local ChangeHistory = require(Modules:FindFirstChild("ChangeHistory"))
 
 local function GetFlipbookGridSize(flipbookType : number?)
     return FLIPBOOK_GRID_SIZES[flipbookType] or 1
@@ -548,29 +549,31 @@ function Presets.Create(scope, _session, selection)
                 return use(SelectedAsset) ~= nil and use(selection.HasRawSelection)
             end,
             Run = function(asset)
-                local Target = ResolveParticleInsertParent(States.RawSelection.Value[1])
-                if not Target then
-                    return
-                end
+                ChangeHistory.Record("Insert Asset Preset", function()
+                    local Target = ResolveParticleInsertParent(States.RawSelection.Value[1])
+                    if not Target then
+                        return
+                    end
 
-                local NewEmitter = Instance.new("ParticleEmitter")
-                NewEmitter.Name = string.format("%sPreset", asset.Type)
-                NewEmitter.Size = NumberSequence.new(1)
-                NewEmitter.Rate = 1
-                NewEmitter.Lifetime = NumberRange.new(2, 2)
-                NewEmitter.Enabled = true
-                ApplyAssetToTextureObject(asset, NewEmitter)
+                    local NewEmitter = Instance.new("ParticleEmitter")
+                    NewEmitter.Name = string.format("%sPreset", asset.Type)
+                    NewEmitter.Size = NumberSequence.new(1)
+                    NewEmitter.Rate = 1
+                    NewEmitter.Lifetime = NumberRange.new(2, 2)
+                    NewEmitter.Enabled = true
+                    ApplyAssetToTextureObject(asset, NewEmitter)
 
-                local Success = pcall(function()
-                    NewEmitter.Parent = Target
+                    local Success = pcall(function()
+                        NewEmitter.Parent = Target
+                    end)
+
+                    if not Success then
+                        NewEmitter:Destroy()
+                        return
+                    end
+
+                    SelectionService:Set({NewEmitter})
                 end)
-
-                if not Success then
-                    NewEmitter:Destroy()
-                    return
-                end
-
-                SelectionService:Set({NewEmitter})
             end,
         },
         {
@@ -580,24 +583,26 @@ function Presets.Create(scope, _session, selection)
                 return use(SelectedAsset) ~= nil and use(selection.HasReplaceTargets)
             end,
             Run = function(asset)
-                local Targets = {}
-                local Seen = {}
+                ChangeHistory.Record("Replace Asset Preset", function()
+                    local Targets = {}
+                    local Seen = {}
 
-                local function Collect(instances)
-                    for _, instance in instances do
-                        if REPLACE_CLASSES[instance.ClassName] and not Seen[instance] then
-                            Seen[instance] = true
-                            table.insert(Targets, instance)
+                    local function Collect(instances)
+                        for _, instance in instances do
+                            if REPLACE_CLASSES[instance.ClassName] and not Seen[instance] then
+                                Seen[instance] = true
+                                table.insert(Targets, instance)
+                            end
                         end
                     end
-                end
 
-                Collect(States.CurrentlySelected.Value)
-                Collect(States.RawSelection.Value)
+                    Collect(States.CurrentlySelected.Value)
+                    Collect(States.RawSelection.Value)
 
-                for _, instance in Targets do
-                    ApplyAssetToTextureObject(asset, instance)
-                end
+                    for _, instance in Targets do
+                        ApplyAssetToTextureObject(asset, instance)
+                    end
+                end)
             end,
         },
     }

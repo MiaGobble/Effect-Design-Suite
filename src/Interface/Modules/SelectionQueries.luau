@@ -110,7 +110,7 @@ function SelectionQueries.Create(scope)
         local RawSelection = use(States.RawSelection)
 
         if #RawSelection == 0 or not PropertyMaps.IsConfigurableInstance(RawSelection[1]) then
-            return "this instance is not configurable with Effect Designer Suite"
+            return "This instance is not configurable with Effect Designer Suite"
         end
 
         local Inspected = RawSelection[1]

@@ -34,6 +34,7 @@ local Modules = Interface:FindFirstChild("Modules")
 local UiKit = require(Modules:FindFirstChild("UiKit"))
 local VfxApiInjection = require(Modules:FindFirstChild("VfxApiInjection"))
 local WorldSpaceAcceleration = require(Modules:FindFirstChild("WorldSpaceAcceleration"))
+local ChangeHistory = require(Modules:FindFirstChild("ChangeHistory"))
 
 function Advanced.Create(scope, _session, selection)
     local Widget, Container = UiKit.CreateListWidget(
@@ -58,8 +59,10 @@ function Advanced.Create(scope, _session, selection)
                 return
             end
 
-            local Indicator = EmitUtils:CreateNewAnimationIndicator(SelectedInstances[1], spec.Kind)
-            SelectionService:Set({Indicator})
+            ChangeHistory.Record("Create " .. spec.Kind .. " Animation", function()
+                local Indicator = EmitUtils:CreateNewAnimationIndicator(SelectedInstances[1], spec.Kind)
+                SelectionService:Set({Indicator})
+            end)
         end))
     end
 
@@ -69,18 +72,20 @@ function Advanced.Create(scope, _session, selection)
             return
         end
 
-        VfxApiInjection.EnsureSharedModules(Bin)
+        ChangeHistory.Record("Insert PlayEffect Module", function()
+            VfxApiInjection.EnsureSharedModules(Bin)
 
-        local Parent = SelectedInstances[1]
-        local Existing = Parent:FindFirstChild("PlayEffect")
-        if Existing then
-            Existing:Destroy()
-        end
+            local Parent = SelectedInstances[1]
+            local Existing = Parent:FindFirstChild("PlayEffect")
+            if Existing then
+                Existing:Destroy()
+            end
 
-        local PlayEffectModule = Bin.PlaybackModules.PlayEffect:Clone()
-        PlayEffectModule.Name = "PlayEffect"
-        PlayEffectModule.Parent = Parent
-        SelectionService:Set({PlayEffectModule})
+            local PlayEffectModule = Bin.PlaybackModules.PlayEffect:Clone()
+            PlayEffectModule.Name = "PlayEffect"
+            PlayEffectModule.Parent = Parent
+            SelectionService:Set({PlayEffectModule})
+        end)
     end)
 
     local InsertEffectModuleTemplateButton = UiKit.CreateActionButton(scope, 3, "Insert Effect Module Template", selection.HasRawSelection, function()
@@ -89,9 +94,11 @@ function Advanced.Create(scope, _session, selection)
             return
         end
 
-        local EffectModuleTemplate = Bin.PlaybackModules.EffectModuleTemplate:Clone()
-        EffectModuleTemplate.Parent = SelectedInstances[1]
-        SelectionService:Set({EffectModuleTemplate})
+        ChangeHistory.Record("Insert Effect Module Template", function()
+            local EffectModuleTemplate = Bin.PlaybackModules.EffectModuleTemplate:Clone()
+            EffectModuleTemplate.Parent = SelectedInstances[1]
+            SelectionService:Set({EffectModuleTemplate})
+        end)
     end)
 
     local InjectApiCheckboxRow = UiKit.CreateRow(scope, 5)
@@ -171,22 +178,26 @@ function Advanced.Create(scope, _session, selection)
     RefreshWorldSpaceAccelCheckbox()
     scope:OnChanged(States.CurrentlySelected, RefreshWorldSpaceAccelCheckbox)
     scope:OnChanged(InjectVfxApiEnabled, function()
-        if InjectVfxApiEnabled.Value then
-            VfxApiInjection.Enable(Bin)
-        else
-            VfxApiInjection.Disable()
-        end
+        ChangeHistory.Record(if InjectVfxApiEnabled.Value then "Enable VFX API" else "Disable VFX API", function()
+            if InjectVfxApiEnabled.Value then
+                VfxApiInjection.Enable(Bin)
+            else
+                VfxApiInjection.Disable()
+            end
+        end)
     end)
     scope:OnChanged(WorldSpaceAccelEnabled, function()
         if IsSyncingWorldSpaceAccel then
             return
         end
 
-        for _, instance in States.CurrentlySelected.Value do
-            if instance:IsA("ParticleEmitter") then
-                WorldSpaceAcceleration.SetEnabled(instance, WorldSpaceAccelEnabled.Value)
+        ChangeHistory.Record("Set World Space Acceleration", function()
+            for _, instance in States.CurrentlySelected.Value do
+                if instance:IsA("ParticleEmitter") then
+                    WorldSpaceAcceleration.SetEnabled(instance, WorldSpaceAccelEnabled.Value)
+                end
             end
-        end
+        end)
     end)
 
     if InjectVfxApiEnabled.Value then

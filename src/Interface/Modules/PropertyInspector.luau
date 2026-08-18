@@ -6,6 +6,7 @@ local CURVE_PREVIEW_GRADIENT_SAMPLES = 19
 
 -- Services
 local HttpService = game:GetService("HttpService")
+local SelectionService = game:GetService("Selection")
 
 -- Imports
 local Interface = script.Parent.Parent
@@ -23,6 +24,7 @@ local UiKit = require(script.Parent:FindFirstChild("UiKit"))
 local EffectOps = require(script.Parent:FindFirstChild("EffectOps"))
 local EditorSession = require(script.Parent:FindFirstChild("EditorSession"))
 local SelectionQueries = require(script.Parent:FindFirstChild("SelectionQueries"))
+local ChangeHistory = require(script.Parent:FindFirstChild("ChangeHistory"))
 
 local function GetPreviewNumberSequence(instance, property)
     local ReadSuccess, Value = pcall(function()
@@ -120,24 +122,28 @@ local function UpdateCurvePreview(previewRoot, sequence)
 end
 
 local function ApplyCFrameComponentVector(property, kind, vector)
-    for _, target in SelectionQueries.GetPropertyEditTargets() do
-        pcall(function()
-            local Current = PropertyValues.ReadInstanceCFrame(target, property)
-            if kind == "Orientation" then
-                target[property] = PropertyValues.CFrameFromPositionAndOrientation(Current.Position, vector)
-            else
-                target[property] = PropertyValues.CFrameFromPositionAndOrientation(vector, PropertyValues.GetCFrameOrientationDegrees(Current))
-            end
-        end)
-    end
+    ChangeHistory.Record("Set " .. property .. " " .. kind, function()
+        for _, target in SelectionQueries.GetPropertyEditTargets() do
+            pcall(function()
+                local Current = PropertyValues.ReadInstanceCFrame(target, property)
+                if kind == "Orientation" then
+                    target[property] = PropertyValues.CFrameFromPositionAndOrientation(Current.Position, vector)
+                else
+                    target[property] = PropertyValues.CFrameFromPositionAndOrientation(vector, PropertyValues.GetCFrameOrientationDegrees(Current))
+                end
+            end)
+        end
+    end)
 end
 
 local function AssignProperty(property, value)
-    for _, target in SelectionQueries.GetPropertyEditTargets() do
-        pcall(function()
-            target[property] = value
-        end)
-    end
+    ChangeHistory.Record("Set " .. property, function()
+        for _, target in SelectionQueries.GetPropertyEditTargets() do
+            pcall(function()
+                target[property] = value
+            end)
+        end
+    end)
 end
 
 local function CreateSplitNumericInputs(scope, parent, position, size, placeholders, getNumbers, applyNumbers, instance, property)
@@ -482,6 +488,130 @@ local function CreateTextEditor(context)
     end)
 end
 
+local function FormatInstanceLabel(value)
+    if typeof(value) ~= "Instance" then
+        return "nil"
+    end
+
+    return value.Name
+end
+
+local function IsCompatibleInstance(candidate, expectedClass)
+    if typeof(candidate) ~= "Instance" then
+        return false
+    end
+
+    if not expectedClass or expectedClass == "Instance" or expectedClass == "Object" then
+        return true
+    end
+
+    local Success, Result = pcall(function()
+        return candidate:IsA(expectedClass)
+    end)
+    return Success and Result == true
+end
+
+local ActiveInstancePick = nil
+
+local function StopInstancePick(restoreSelection)
+    local Pick = ActiveInstancePick
+    ActiveInstancePick = nil
+    States.IsPickingInstance.Value = false
+
+    if not Pick then
+        return
+    end
+
+    if Pick.Connection then
+        Pick.Connection:Disconnect()
+    end
+
+    if Pick.WaitingState then
+        Pick.WaitingState.Value = false
+    end
+
+    if restoreSelection and Pick.OriginalSelection then
+        SelectionService:Set(Pick.OriginalSelection)
+    end
+end
+
+local function CreateInstanceEditor(context)
+    local ExpectedClass = PropertyMaps.GetInstancePropertyClass(context.Instance, context.Property) or "Instance"
+    local LabelState = context.Scope:Value(FormatInstanceLabel(context.CurrentValue))
+    local WaitingState = context.Scope:Value(false)
+
+    context.Scope:New(Jian.TextButton, {
+        Parent = context.Row,
+        Position = UDim2.new(0.28, 0, 0, 0),
+        Size = context.ValueSize,
+        Text = context.Scope:Computed(function(use)
+            if use(WaitingState) then
+                return "Select..."
+            end
+
+            return use(LabelState)
+        end),
+        Active = true,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        [Seam.OnEvent("Activated")] = function()
+            if ActiveInstancePick and ActiveInstancePick.Instance == context.Instance and ActiveInstancePick.Property == context.Property then
+                StopInstancePick(true)
+                return
+            end
+
+            StopInstancePick(true)
+
+            local OriginalSelection = table.clone(SelectionService:Get())
+            WaitingState.Value = true
+            States.IsPickingInstance.Value = true
+
+            local Pick = {
+                Instance = context.Instance,
+                Property = context.Property,
+                OriginalSelection = OriginalSelection,
+                WaitingState = WaitingState,
+                Connection = nil,
+            }
+            ActiveInstancePick = Pick
+
+            Pick.Connection = SelectionService.SelectionChanged:Connect(function()
+                if ActiveInstancePick ~= Pick then
+                    return
+                end
+
+                local Selected = SelectionService:Get()
+                if #Selected ~= 1 then
+                    return
+                end
+
+                local Candidate = Selected[1]
+                if not IsCompatibleInstance(Candidate, ExpectedClass) then
+                    return
+                end
+
+                StopInstancePick(false)
+                AssignProperty(context.Property, Candidate)
+                LabelState.Value = FormatInstanceLabel(Candidate)
+                SelectionService:Set(OriginalSelection)
+            end)
+            context.Scope:AddObject(Pick.Connection)
+        end,
+    })
+
+    context.Scope:OnChanged(context.Instance, function(changedProperty)
+        if changedProperty ~= context.Property or WaitingState.Value then
+            return
+        end
+
+        local ValueSuccess, Value = pcall(function()
+            return context.Instance[context.Property]
+        end)
+        if ValueSuccess then
+            LabelState.Value = FormatInstanceLabel(Value)
+        end
+    end)
+end
+
 local function CreateSequenceEditor(context)
     CreateSequencePreviewButton(
         context.Scope,
@@ -506,6 +636,7 @@ local ROW_EDITORS = {
     Vector3 = CreateVector3Editor,
     NumberRange = CreateNumberRangeEditor,
     EnumItem = CreateEnumEditor,
+    Instance = CreateInstanceEditor,
     Default = CreateTextEditor,
 }
 
@@ -544,7 +675,15 @@ local function CreateInspectorPropertyRow(scope, session, instance, property : s
         IsColorSequence = IsColorSequence,
     }
 
-    local EditorKey = if IsCurve or IsColorSequence then "Sequence" elseif cframeKind then "Vector3" else ValueType
+    local InstanceClass = PropertyMaps.GetInstancePropertyClass(instance, property)
+    local EditorKey = if IsCurve or IsColorSequence then
+        "Sequence"
+    elseif cframeKind then
+        "Vector3"
+    elseif InstanceClass or ValueType == "Instance" then
+        "Instance"
+    else
+        ValueType
     local Editor = ROW_EDITORS[EditorKey] or ROW_EDITORS.Default
     Editor(Context)
 
@@ -604,6 +743,11 @@ function PropertyInspector.Mount(scope, parent, session)
     local InspectorScope = nil
 
     local function RefreshPropertyInspector()
+        if States.IsPickingInstance.Value then
+            return
+        end
+
+        StopInstancePick(false)
         if InspectorScope then
             if scope.Trove then
                 scope.Trove:Pop(InspectorScope)

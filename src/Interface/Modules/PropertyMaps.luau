@@ -251,6 +251,43 @@ function PropertyMaps.GetPropertiesForSelection(instances : {Instance}, property
 end
 
 local InspectorPropertyCache = {}
+local PRIMITIVE_TYPE_NAMES = {
+    string = true,
+    number = true,
+    boolean = true,
+    float = true,
+    double = true,
+    int = true,
+    int64 = true,
+    Vector2 = true,
+    Vector3 = true,
+    CFrame = true,
+    Color3 = true,
+    UDim = true,
+    UDim2 = true,
+    Rect = true,
+    NumberRange = true,
+    NumberSequence = true,
+    ColorSequence = true,
+    BrickColor = true,
+    Enum = true,
+    EnumItem = true,
+    Content = true,
+    Font = true,
+    Faces = true,
+    Axes = true,
+    PhysicalProperties = true,
+    Ray = true,
+    Region3 = true,
+    TweenInfo = true,
+    DateTime = true,
+}
+local KNOWN_INSTANCE_PROPERTY_CLASSES = {
+    Attachment0 = "Attachment",
+    Attachment1 = "Attachment",
+    Adornee = "Instance",
+    PrimaryPart = "BasePart",
+}
 
 local function CanReadProperty(instance, property : string)
     local Success = pcall(function()
@@ -258,6 +295,62 @@ local function CanReadProperty(instance, property : string)
     end)
 
     return Success
+end
+
+local function ReadPropertyType(propertyInfo)
+    local Type = propertyInfo.Type or propertyInfo.ValueType or propertyInfo.SerializedType
+    if typeof(Type) == "string" then
+        return {
+            Name = Type,
+            Category = nil,
+        }
+    end
+
+    if typeof(Type) ~= "table" then
+        return nil
+    end
+
+    return {
+        Name = Type.Name or Type.name,
+        Category = Type.Category or Type.category,
+    }
+end
+
+local function IsClassPropertyType(typeInfo)
+    if typeof(typeInfo) ~= "table" then
+        return false
+    end
+
+    local Category = typeInfo.Category
+    if Category == "Class" or Category == "Object" or Category == "Instance" or Category == "Instances" then
+        return true
+    end
+
+    local Name = typeInfo.Name
+    if Name == "Instance" or Name == "Object" then
+        return true
+    end
+
+    if typeof(Name) ~= "string" or PRIMITIVE_TYPE_NAMES[Name] then
+        return false
+    end
+
+    if Category == "Primitive" or Category == "DataType" or Category == "Enum" then
+        return false
+    end
+
+    local Success = pcall(function()
+        workspace:IsA(Name)
+    end)
+    return Success
+end
+
+local function GetCachedPropertyNames(cached)
+    if typeof(cached) == "table" and cached.Names then
+        return cached.Names, cached.Types or {}
+    end
+
+    return cached, {}
 end
 
 function PropertyMaps.ShouldSkipInspectorProperty(property)
@@ -279,9 +372,10 @@ function PropertyMaps.GetInspectorProperties(instance)
 
     local Cached = InspectorPropertyCache[instance.ClassName]
     if Cached then
-        local HasCFrame = table.find(Cached, "CFrame") ~= nil
+        local Names = GetCachedPropertyNames(Cached)
+        local HasCFrame = table.find(Names, "CFrame") ~= nil
         local VisibleProperties = {}
-        for _, property in Cached do
+        for _, property in Names do
             if PropertyMaps.ShouldSkipInspectorProperty(property) then
                 continue
             end
@@ -296,6 +390,7 @@ function PropertyMaps.GetInspectorProperties(instance)
     end
 
     local Properties = {}
+    local Types = {}
     local Seen = {}
 
     local Success, Reflected = pcall(function()
@@ -331,6 +426,7 @@ function PropertyMaps.GetInspectorProperties(instance)
 
             Seen[Name] = true
             table.insert(Properties, Name)
+            Types[Name] = ReadPropertyType(propertyInfo)
         end
     end
 
@@ -353,7 +449,10 @@ function PropertyMaps.GetInspectorProperties(instance)
     end
 
     table.sort(Properties)
-    InspectorPropertyCache[instance.ClassName] = Properties
+    InspectorPropertyCache[instance.ClassName] = {
+        Names = Properties,
+        Types = Types,
+    }
 
     local HasCFrame = table.find(Properties, "CFrame") ~= nil
     local VisibleProperties = {}
@@ -370,6 +469,35 @@ function PropertyMaps.GetInspectorProperties(instance)
     end
 
     return VisibleProperties
+end
+
+function PropertyMaps.GetInstancePropertyClass(instance, property : string)
+    if typeof(instance) ~= "Instance" or typeof(property) ~= "string" then
+        return nil
+    end
+
+    PropertyMaps.GetInspectorProperties(instance)
+
+    local Cached = InspectorPropertyCache[instance.ClassName]
+    local _, Types = GetCachedPropertyNames(Cached)
+    local TypeInfo = Types[property]
+    if IsClassPropertyType(TypeInfo) then
+        return TypeInfo.Name or "Instance"
+    end
+
+    local KnownClass = KNOWN_INSTANCE_PROPERTY_CLASSES[property]
+    if KnownClass then
+        return KnownClass
+    end
+
+    local Success, Value = pcall(function()
+        return instance[property]
+    end)
+    if Success and typeof(Value) == "Instance" then
+        return Value.ClassName
+    end
+
+    return nil
 end
 
 function PropertyMaps.IsCurveProperty(instance, property : string)

@@ -9,6 +9,7 @@ local Interface = script.Parent.Parent
 local Bin = Interface.Parent
 local Packages = Bin:FindFirstChild("Packages")
 local Oklab = require(Packages:FindFirstChild("Oklab"))
+local ChangeHistory = require(script.Parent:FindFirstChild("ChangeHistory"))
 
 local function SortColorPoints(points)
     local Sorted = table.clone(points)
@@ -170,18 +171,20 @@ function EffectOps.ApplyResizeMultiplier(multiplier : number, instances : {Insta
         return
     end
 
-    for _, instance in instances do
-        if instance:IsA("ParticleEmitter") then
-            instance.Size = EffectOps.ScaleValueByMultiplier(instance.Size, multiplier)
-        elseif instance:IsA("Beam") then
-            instance.Width0 = instance.Width0 * multiplier
-            instance.Width1 = instance.Width1 * multiplier
-        elseif instance:IsA("Trail") then
-            instance.WidthScale = EffectOps.ScaleValueByMultiplier(instance.WidthScale, multiplier)
-        elseif instance:IsA("Attachment") then
-            instance.Position = instance.Position * multiplier
+    ChangeHistory.Record("Resize", function()
+        for _, instance in instances do
+            if instance:IsA("ParticleEmitter") then
+                instance.Size = EffectOps.ScaleValueByMultiplier(instance.Size, multiplier)
+            elseif instance:IsA("Beam") then
+                instance.Width0 = instance.Width0 * multiplier
+                instance.Width1 = instance.Width1 * multiplier
+            elseif instance:IsA("Trail") then
+                instance.WidthScale = EffectOps.ScaleValueByMultiplier(instance.WidthScale, multiplier)
+            elseif instance:IsA("Attachment") then
+                instance.Position = instance.Position * multiplier
+            end
         end
-    end
+    end)
 end
 
 function EffectOps.ReadCurvePointsFromNumberSequence(sequence : NumberSequence)
@@ -306,86 +309,88 @@ function EffectOps.ApplyMathOperation(value: number, property: string, operation
         return
     end
 
-    for _, instance in instances do
-        if not (instance:IsA("ParticleEmitter") and instance[property]) then
-            continue
-        end
+    ChangeHistory.Record("Math " .. operation, function()
+        for _, instance in instances do
+            if not (instance:IsA("ParticleEmitter") and instance[property]) then
+                continue
+            end
 
-        local PropertyType = typeof(instance[property])
+            local PropertyType = typeof(instance[property])
 
-        if PropertyType == "NumberSequence" then
-            local OldSequence = instance[property]
-            local NewKeypoints = {}
+            if PropertyType == "NumberSequence" then
+                local OldSequence = instance[property]
+                local NewKeypoints = {}
 
-            for _, keypoint in OldSequence.Keypoints do
-                local NewValue, NewEnvelope
+                for _, keypoint in OldSequence.Keypoints do
+                    local NewValue, NewEnvelope
+
+                    if operation == "add" then
+                        NewValue = keypoint.Value + value
+                        NewEnvelope = keypoint.Envelope and (keypoint.Envelope + value)
+                    elseif operation == "subtract" then
+                        NewValue = keypoint.Value - value
+                        NewEnvelope = keypoint.Envelope and (keypoint.Envelope - value)
+                    elseif operation == "multiply" then
+                        NewValue = keypoint.Value * value
+                        NewEnvelope = keypoint.Envelope and (keypoint.Envelope * value)
+                    elseif operation == "divide" then
+                        if value == 0 then
+                            continue
+                        end
+
+                        NewValue = keypoint.Value / value
+                        NewEnvelope = keypoint.Envelope and (keypoint.Envelope / value)
+                    end
+
+                    table.insert(NewKeypoints, NumberSequenceKeypoint.new(
+                        keypoint.Time,
+                        NewValue,
+                        NewEnvelope
+                    ))
+                end
+
+                instance[property] = NumberSequence.new(NewKeypoints)
+            elseif PropertyType == "NumberRange" then
+                local OldMin = instance[property].Min
+                local OldMax = instance[property].Max
+                local NewMin, NewMax
 
                 if operation == "add" then
-                    NewValue = keypoint.Value + value
-                    NewEnvelope = keypoint.Envelope and (keypoint.Envelope + value)
+                    NewMin = OldMin + value
+                    NewMax = OldMax + value
                 elseif operation == "subtract" then
-                    NewValue = keypoint.Value - value
-                    NewEnvelope = keypoint.Envelope and (keypoint.Envelope - value)
+                    NewMin = OldMin - value
+                    NewMax = OldMax - value
                 elseif operation == "multiply" then
-                    NewValue = keypoint.Value * value
-                    NewEnvelope = keypoint.Envelope and (keypoint.Envelope * value)
+                    NewMin = OldMin * value
+                    NewMax = OldMax * value
                 elseif operation == "divide" then
                     if value == 0 then
                         continue
                     end
 
-                    NewValue = keypoint.Value / value
-                    NewEnvelope = keypoint.Envelope and (keypoint.Envelope / value)
+                    NewMin = OldMin / value
+                    NewMax = OldMax / value
                 end
 
-                table.insert(NewKeypoints, NumberSequenceKeypoint.new(
-                    keypoint.Time,
-                    NewValue,
-                    NewEnvelope
-                ))
-            end
+                instance[property] = NumberRange.new(NewMin, NewMax)
+            elseif PropertyType == "number" then
+                if operation == "add" then
+                    instance[property] = instance[property] + value
+                elseif operation == "subtract" then
+                    instance[property] = instance[property] - value
+                elseif operation == "multiply" then
+                    instance[property] = instance[property] * value
+                elseif operation == "divide" then
+                    if value == 0 then
+                        continue
+                    end
 
-            instance[property] = NumberSequence.new(NewKeypoints)
-        elseif PropertyType == "NumberRange" then
-            local OldMin = instance[property].Min
-            local OldMax = instance[property].Max
-            local NewMin, NewMax
-
-            if operation == "add" then
-                NewMin = OldMin + value
-                NewMax = OldMax + value
-            elseif operation == "subtract" then
-                NewMin = OldMin - value
-                NewMax = OldMax - value
-            elseif operation == "multiply" then
-                NewMin = OldMin * value
-                NewMax = OldMax * value
-            elseif operation == "divide" then
-                if value == 0 then
-                    continue
+                    instance[property] = instance[property] / value
                 end
-
-                NewMin = OldMin / value
-                NewMax = OldMax / value
-            end
-
-            instance[property] = NumberRange.new(NewMin, NewMax)
-        elseif PropertyType == "number" then
-            if operation == "add" then
-                instance[property] = instance[property] + value
-            elseif operation == "subtract" then
-                instance[property] = instance[property] - value
-            elseif operation == "multiply" then
-                instance[property] = instance[property] * value
-            elseif operation == "divide" then
-                if value == 0 then
-                    continue
-                end
-
-                instance[property] = instance[property] / value
             end
         end
-    end
+    end)
 end
 
 return EffectOps

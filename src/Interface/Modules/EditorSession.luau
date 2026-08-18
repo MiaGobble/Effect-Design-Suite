@@ -21,6 +21,7 @@ local States = require(Objects:FindFirstChild("States"))
 local EffectOps = require(script.Parent:FindFirstChild("EffectOps"))
 local PartAnimation = require(script.Parent:FindFirstChild("PartAnimation"))
 local SelectionQueries = require(script.Parent:FindFirstChild("SelectionQueries"))
+local ChangeHistory = require(script.Parent:FindFirstChild("ChangeHistory"))
 
 local function CurveAttributeName(property)
     return CURVE_ATTRIBUTE_PREFIX .. property
@@ -255,23 +256,25 @@ function EditorSession.Create(scope)
             end,
         }
 
-        for _, instance in SelectionQueries.GetPropertyEditTargets() do
-            local Applier = CLASS_APPLIERS[instance.ClassName]
-            if instance:IsA("BasePart") then
-                Applier = CLASS_APPLIERS.BasePart
-            end
+        ChangeHistory.Record("Apply Curve", function()
+            for _, instance in SelectionQueries.GetPropertyEditTargets() do
+                local Applier = CLASS_APPLIERS[instance.ClassName]
+                if instance:IsA("BasePart") then
+                    Applier = CLASS_APPLIERS.BasePart
+                end
 
-            if Applier then
-                Applier(instance)
-            else
-                pcall(function()
-                    instance[SelectedProperty] = NewSequence
-                    instance:SetAttribute(CurveAttributeName(SelectedProperty), EncodedPoints)
-                    instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MinRange"), MinRange)
-                    instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MaxRange"), MaxRange)
-                end)
+                if Applier then
+                    Applier(instance)
+                else
+                    pcall(function()
+                        instance[SelectedProperty] = NewSequence
+                        instance:SetAttribute(CurveAttributeName(SelectedProperty), EncodedPoints)
+                        instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MinRange"), MinRange)
+                        instance:SetAttribute(CurveRangeAttributeName(SelectedProperty, "MaxRange"), MaxRange)
+                    end)
+                end
             end
-        end
+        end)
     end
 
     function Session.ApplyColorSequence()
@@ -290,16 +293,22 @@ function EditorSession.Create(scope)
             end,
         }
 
-        for _, instance in SelectionQueries.GetPropertyEditTargets() do
-            if SelectionQueries.HasColorSequence(instance) then
-                CLASS_APPLIERS.ColorSequence(instance)
-            elseif instance:IsA("BasePart") then
-                CLASS_APPLIERS.BasePart(instance)
+        ChangeHistory.Record("Apply Color Sequence", function()
+            for _, instance in SelectionQueries.GetPropertyEditTargets() do
+                if SelectionQueries.HasColorSequence(instance) then
+                    CLASS_APPLIERS.ColorSequence(instance)
+                elseif instance:IsA("BasePart") then
+                    CLASS_APPLIERS.BasePart(instance)
+                end
             end
-        end
+        end)
     end
 
     scope:OnChanged(States.CurrentlySelected, function()
+        if States.IsPickingInstance.Value then
+            return
+        end
+
         Session.ReadCurveState()
         Session.ReadColorSequenceState()
     end)

@@ -43,6 +43,7 @@ local Modules = Interface:FindFirstChild("Modules")
 local UiKit = require(Modules:FindFirstChild("UiKit"))
 local VersionCheck = require(Modules:FindFirstChild("VersionCheck"))
 local PropertyInspector = require(Modules:FindFirstChild("PropertyInspector"))
+local ChangeHistory = require(Modules:FindFirstChild("ChangeHistory"))
 
 local function SyncSelectionAttribute(state, attributeName : string)
     local CurrentInstance = States.PrimarySelected.Value
@@ -100,9 +101,11 @@ local function CreateEmitAttributeField(scope, parent, position : UDim2, size : 
                     return
                 end
 
-                for _, instance in CurrentlySelected do
-                    instance:SetAttribute(attributeName, Number)
-                end
+                ChangeHistory.Record("Set " .. attributeName, function()
+                    for _, instance in CurrentlySelected do
+                        instance:SetAttribute(attributeName, Number)
+                    end
+                end)
 
                 FocusStartText = textState.Value
             end,
@@ -220,7 +223,7 @@ function Core.Create(scope, session, selection)
 
     scope:New(Jian.Text, {
         Parent = RepeatDelayColumn,
-        Text = "repeat delay",
+        Text = "Repeat Delay",
         Size = UDim2.new(1, 0, 0, EMIT_FIELD_LABEL_HEIGHT),
         AutomaticSize = Enum.AutomaticSize.None,
         TextXAlignment = Enum.TextXAlignment.Left,
