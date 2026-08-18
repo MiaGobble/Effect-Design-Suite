@@ -468,38 +468,40 @@ function CurveEditor:Construct(scope, properties)
         return false
     end
 
-    scope:AddObject(InteractionLayer.InputBegan:Connect(function(input)
-        if not ReadActiveValue(properties.Active) then
-            return
-        end
+    Seam.New(InteractionLayer, {
+        [Seam.OnEvent("InputBegan")] = function(input)
+            if not ReadActiveValue(properties.Active) then
+                return
+            end
 
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-            return
-        end
+            if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                return
+            end
 
-        local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
-        local MouseLocation = LocalInput.GetLocalFromScreenPosition(Frame, ScreenPosition)
+            local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
+            local MouseLocation = LocalInput.GetLocalFromScreenPosition(Frame, ScreenPosition)
 
-        if IsNearExistingControl(MouseLocation) then
-            return
-        end
+            if IsNearExistingControl(MouseLocation) then
+                return
+            end
 
-        local Time, Value = ToCurvePosition(MouseLocation)
+            local Time, Value = ToCurvePosition(MouseLocation)
 
-        local NewPoints = GetPointsCopy()
-        table.insert(NewPoints, {
-            Time = Time,
-            Value = Value,
-            InHandleX = -0.12,
-            InHandleY = 0,
-            OutHandleX = 0.12,
-            OutHandleY = 0,
-        })
-        SortPoints(NewPoints)
+            local NewPoints = GetPointsCopy()
+            table.insert(NewPoints, {
+                Time = Time,
+                Value = Value,
+                InHandleX = -0.12,
+                InHandleY = 0,
+                OutHandleX = 0.12,
+                OutHandleY = 0,
+            })
+            SortPoints(NewPoints)
 
-        properties.Points.Value = NewPoints
-        RenderVisuals()
-    end))
+            properties.Points.Value = NewPoints
+            RenderVisuals()
+        end,
+    })
 
     local function StopDrag()
         self.IsDragging.Value = false
@@ -556,14 +558,18 @@ function CurveEditor:Construct(scope, properties)
         end
     end, StopDrag)
 
-    scope:AddObject(Seam.OnChanged(self.IsDragging, function()
+    scope:OnChanged(self.IsDragging, function()
         if not self.IsDragging.Value then
             DragSession.Stop()
         end
-    end))
+    end)
 
-    scope:AddObject(Seam.OnChanged(properties.Points, RenderVisuals))
-    scope:AddObject(Frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(RenderVisuals))
+    scope:OnChanged(properties.Points, RenderVisuals)
+    scope:OnChanged(Frame, function(property)
+        if property == "AbsoluteSize" then
+            RenderVisuals()
+        end
+    end)
     RenderVisuals()
 
     return Frame

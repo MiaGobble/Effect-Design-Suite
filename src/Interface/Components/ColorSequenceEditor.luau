@@ -200,7 +200,7 @@ function ColorSequenceEditor:Construct(scope, properties)
 
         for index, point in Points do
             local IsSelected = index == ActiveIndex
-            local Marker = MarkerScope:New("TextButton", {
+            MarkerScope:New("TextButton", {
                 Parent = MarkerLayer,
                 AnchorPoint = Vector2.new(0.5, 0),
                 Position = UDim2.new(point.Time, 0, 0, 46),
@@ -221,96 +221,101 @@ function ColorSequenceEditor:Construct(scope, properties)
                         Thickness = if IsSelected then 2 else 1,
                     }),
                 },
+                [Seam.OnEvent("InputBegan")] = function(input)
+                    if not ReadActiveValue(properties.Active) then
+                        return
+                    end
+
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        if properties.ActivePointIndex then
+                            properties.ActivePointIndex.Value = index
+                        end
+                        self.DraggedPointIndex = index
+                        PendingClickIndex = index
+                        DragExceededClickThreshold = false
+                        DragWasCancelled = false
+                        DragStartTime = point.Time
+                        local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
+                        DragStartMouse = LocalInput.GetLocalFromScreenPosition(Frame, ScreenPosition)
+                        self.IsDragging.Value = true
+                        DragPointState = properties.Points.Value
+                        DragSession.Start(DragStartMouse, input)
+                        return
+                    end
+
+                    if input.UserInputType == Enum.UserInputType.MouseButton2 and index > 1 and index < #Points then
+                        table.remove(Points, index)
+                        properties.Points.Value = Points
+                        if properties.ActivePointIndex then
+                            properties.ActivePointIndex.Value = nil
+                        end
+                        if properties.OnEditPoint then
+                            properties.OnEditPoint(nil)
+                        end
+                    end
+                end,
             })
+        end
+    end
 
-            MarkerScope:AddObject(Marker.InputBegan:Connect(function(input)
-                if not ReadActiveValue(properties.Active) then
-                    return
-                end
+    Seam.New(InsertButton, {
+        [Seam.OnEvent("InputBegan")] = function(input)
+            if not ReadActiveValue(properties.Active) or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                return
+            end
 
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local Points = GetPoints()
+            if #Points >= MAXIMUM_POINTS then
+                return
+            end
+
+            local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
+            local LocalMouse = LocalInput.GetLocalFromScreenPosition(GradientFrame, ScreenPosition)
+            local Time = math.clamp(LocalMouse.X / math.max(1, GradientFrame.AbsoluteSize.X), TIME_EPSILON, 1 - TIME_EPSILON)
+            for index, point in Points do
+                if math.abs(point.Time - Time) < 0.008 then
                     if properties.ActivePointIndex then
                         properties.ActivePointIndex.Value = index
-                    end
-                    self.DraggedPointIndex = index
-                    PendingClickIndex = index
-                    DragExceededClickThreshold = false
-                    DragWasCancelled = false
-                    DragStartTime = point.Time
-                    local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
-                    DragStartMouse = LocalInput.GetLocalFromScreenPosition(Frame, ScreenPosition)
-                    self.IsDragging.Value = true
-                    DragPointState = properties.Points.Value
-                    DragSession.Start(DragStartMouse, input)
-                    return
-                end
-
-                if input.UserInputType == Enum.UserInputType.MouseButton2 and index > 1 and index < #Points then
-                    table.remove(Points, index)
-                    properties.Points.Value = Points
-                    if properties.ActivePointIndex then
-                        properties.ActivePointIndex.Value = nil
                     end
                     if properties.OnEditPoint then
                         properties.OnEditPoint(nil)
                     end
+                    return
                 end
-            end))
-        end
-    end
-
-    scope:AddObject(InsertButton.InputBegan:Connect(function(input)
-        if not ReadActiveValue(properties.Active) or input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-            return
-        end
-
-        local Points = GetPoints()
-        if #Points >= MAXIMUM_POINTS then
-            return
-        end
-
-        local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
-        local LocalMouse = LocalInput.GetLocalFromScreenPosition(GradientFrame, ScreenPosition)
-        local Time = math.clamp(LocalMouse.X / math.max(1, GradientFrame.AbsoluteSize.X), TIME_EPSILON, 1 - TIME_EPSILON)
-        for index, point in Points do
-            if math.abs(point.Time - Time) < 0.008 then
-                if properties.ActivePointIndex then
-                    properties.ActivePointIndex.Value = index
-                end
-                if properties.OnEditPoint then
-                    properties.OnEditPoint(nil)
-                end
-                return
             end
-        end
 
-        local Value = EffectOps.InterpolateOklabPoints(Points, Time)
-        local NewPoint = {
-            Time = Time,
-            L = Value.X,
-            A = Value.Y,
-            B = Value.Z,
-        }
-        table.insert(Points, NewPoint)
-        table.sort(Points, function(left, right)
-            return left.Time < right.Time
-        end)
+            local Value = EffectOps.InterpolateOklabPoints(Points, Time)
+            local NewPoint = {
+                Time = Time,
+                L = Value.X,
+                A = Value.Y,
+                B = Value.Z,
+            }
+            table.insert(Points, NewPoint)
+            table.sort(Points, function(left, right)
+                return left.Time < right.Time
+            end)
 
-        local NewIndex = table.find(Points, NewPoint)
-        properties.Points.Value = Points
-        if properties.ActivePointIndex then
-            properties.ActivePointIndex.Value = NewIndex
-        end
-        if properties.OnEditPoint then
-            properties.OnEditPoint(nil)
-        end
-    end))
+            local NewIndex = table.find(Points, NewPoint)
+            properties.Points.Value = Points
+            if properties.ActivePointIndex then
+                properties.ActivePointIndex.Value = NewIndex
+            end
+            if properties.OnEditPoint then
+                properties.OnEditPoint(nil)
+            end
+        end,
+    })
 
-    scope:AddObject(Seam.OnChanged(properties.Points, RenderMarkers))
+    scope:OnChanged(properties.Points, RenderMarkers)
     if properties.ActivePointIndex then
-        scope:AddObject(Seam.OnChanged(properties.ActivePointIndex, RenderMarkers))
+        scope:OnChanged(properties.ActivePointIndex, RenderMarkers)
     end
-    scope:AddObject(Frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(RenderMarkers))
+    scope:OnChanged(Frame, function(property)
+        if property == "AbsoluteSize" then
+            RenderMarkers()
+        end
+    end)
     RenderMarkers()
 
     return Frame
