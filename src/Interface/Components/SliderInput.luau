@@ -186,35 +186,34 @@ function SliderInput:Construct(scope, properties)
         DragSession.Start(startLocalPosition, input)
     end
 
-    local Hitbox = scope:New("TextButton", {
+    scope:New("TextButton", {
         Parent = SliderTrack,
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         Text = "",
         AutoButtonColor = false,
         Active = properties.Active,
+        [Seam.OnEvent("InputBegan")] = function(input)
+            if not ReadActiveValue() then
+                return
+            end
+
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
+                local LocalMouse = LocalInput.GetLocalFromScreenPosition(SliderTrack, ScreenPosition)
+                ProcessLocalInput(LocalMouse.X)
+                StartDrag(LocalMouse, input)
+            end
+        end,
     })
-
-    scope:AddObject(Hitbox.InputBegan:Connect(function(input)
-        if not ReadActiveValue() then
-            return
-        end
-
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
-            local LocalMouse = LocalInput.GetLocalFromScreenPosition(SliderTrack, ScreenPosition)
-            ProcessLocalInput(LocalMouse.X)
-            StartDrag(LocalMouse, input)
-        end
-    end))
 
     local InputState = scope:Value("0")
 
-    scope:AddObject(Seam.OnChanged(properties.Value, function()
+    scope:OnChanged(properties.Value, function()
         if properties.Value then
             InputState.Value = FormatNumber(properties.Value.Value)
         end
-    end))
+    end)
 
     local NumberBox = scope:New(Jian.TextBox, {
         Parent = Frame,
@@ -225,26 +224,31 @@ function SliderInput:Construct(scope, properties)
         PlaceholderText = tostring(Min),
     })
 
-    scope:AddObject(NumberBox.FocusLost:Connect(function()
-        local NumberValue = ToNumber(InputState.Value)
+    local InnerNumberBox = if NumberBox:IsA("TextBox") then NumberBox else NumberBox:FindFirstChildWhichIsA("TextBox", true)
+    if InnerNumberBox then
+        Seam.New(InnerNumberBox, {
+            [Seam.OnEvent("FocusLost")] = function()
+                local NumberValue = ToNumber(InputState.Value)
 
-        if NumberValue == nil then
-            InputState.Value = tostring(properties.Value and properties.Value.Value or Min)
-            return
-        end
+                if NumberValue == nil then
+                    InputState.Value = tostring(properties.Value and properties.Value.Value or Min)
+                    return
+                end
 
-        if not AllowOutOfRangeText then
-            NumberValue = math.clamp(NumberValue, Min, Max)
-        end
+                if not AllowOutOfRangeText then
+                    NumberValue = math.clamp(NumberValue, Min, Max)
+                end
 
-        NumberValue = ApplyStep(NumberValue)
+                NumberValue = ApplyStep(NumberValue)
 
-        if properties.Value then
-            properties.Value.Value = NumberValue
-        end
+                if properties.Value then
+                    properties.Value.Value = NumberValue
+                end
 
-        InputState.Value = FormatNumber(NumberValue)
-    end))
+                InputState.Value = FormatNumber(NumberValue)
+            end,
+        })
+    end
 
     if properties.Value then
         InputState.Value = FormatNumber(properties.Value.Value)

@@ -154,6 +154,8 @@ function Dropdown:Construct(scope, properties)
 
             return tostring(Current)
         end),
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        TextWrapped = false,
         ZIndex = BASE_Z + 2,
     })
 
@@ -340,19 +342,26 @@ function Dropdown:Construct(scope, properties)
         RefreshLayout()
     end
 
-    scope:AddObject(Seam.OnChanged(self.IsOpen, function()
+    scope:OnChanged(self.IsOpen, function()
         OverlayRoot.Visible = self.IsOpen.Value
         ListFrame.Visible = self.IsOpen.Value
         RefreshLayout()
-    end))
+    end)
 
-    scope:AddObject(Root:GetPropertyChangedSignal("AbsolutePosition"):Connect(RefreshLayout))
-    scope:AddObject(Root:GetPropertyChangedSignal("AbsoluteSize"):Connect(RefreshLayout))
+    local LAYOUT_PROPERTIES = {
+        AbsolutePosition = true,
+        AbsoluteSize = true,
+    }
+    scope:OnChanged(Root, function(property)
+        if LAYOUT_PROPERTIES[property] then
+            RefreshLayout()
+        end
+    end)
 
     if typeof(OptionsSource) == "table" and OptionsSource.Value ~= nil then
-        scope:AddObject(Seam.OnChanged(OptionsSource, function()
+        scope:OnChanged(OptionsSource, function()
             RenderRows()
-        end))
+        end)
     end
 
     RenderRows()

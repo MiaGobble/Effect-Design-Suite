@@ -225,41 +225,45 @@ function ColorPicker:Construct(scope, properties)
         UpdateFromValueMouse(localMouse)
     end, StopDragging)
 
-    scope:AddObject(PickerHitbox.InputBegan:Connect(function(input)
-        if not ReadActiveValue(properties.Active) then
-            return
-        end
+    Seam.New(PickerHitbox, {
+        [Seam.OnEvent("InputBegan")] = function(input)
+            if not ReadActiveValue(properties.Active) then
+                return
+            end
 
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-            return
-        end
+            if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                return
+            end
 
-        ValueDrag.Stop()
-        self.IsDraggingPicker.Value = true
-        self.IsDraggingValue.Value = false
+            ValueDrag.Stop()
+            self.IsDraggingPicker.Value = true
+            self.IsDraggingValue.Value = false
 
-        local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
-        local LocalMouse = LocalInput.GetLocalFromScreenPosition(PickerHitbox, ScreenPosition)
-        PickerDrag.Start(LocalMouse, input)
-    end))
+            local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
+            local LocalMouse = LocalInput.GetLocalFromScreenPosition(PickerHitbox, ScreenPosition)
+            PickerDrag.Start(LocalMouse, input)
+        end,
+    })
 
-    scope:AddObject(ValueHitbox.InputBegan:Connect(function(input)
-        if not ReadActiveValue(properties.Active) then
-            return
-        end
+    Seam.New(ValueHitbox, {
+        [Seam.OnEvent("InputBegan")] = function(input)
+            if not ReadActiveValue(properties.Active) then
+                return
+            end
 
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-            return
-        end
+            if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                return
+            end
 
-        PickerDrag.Stop()
-        self.IsDraggingPicker.Value = false
-        self.IsDraggingValue.Value = true
+            PickerDrag.Stop()
+            self.IsDraggingPicker.Value = false
+            self.IsDraggingValue.Value = true
 
-        local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
-        local LocalMouse = LocalInput.GetLocalFromScreenPosition(ValueHitbox, ScreenPosition)
-        ValueDrag.Start(LocalMouse, input)
-    end))
+            local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
+            local LocalMouse = LocalInput.GetLocalFromScreenPosition(ValueHitbox, ScreenPosition)
+            ValueDrag.Start(LocalMouse, input)
+        end,
+    })
 
     local function UpdateExternal()
         if not properties.Value then
@@ -269,17 +273,17 @@ function ColorPicker:Construct(scope, properties)
         properties.Value.Value = Color3.fromHSV(self.H.Value, self.S.Value, self.V.Value)
     end
 
-    scope:AddObject(Seam.OnChanged(self.H, UpdateExternal))
-    scope:AddObject(Seam.OnChanged(self.S, UpdateExternal))
-    scope:AddObject(Seam.OnChanged(self.V, UpdateExternal))
+    scope:OnChanged(self.H, UpdateExternal)
+    scope:OnChanged(self.S, UpdateExternal)
+    scope:OnChanged(self.V, UpdateExternal)
 
     if properties.Value then
-        scope:AddObject(Seam.OnChanged(properties.Value, function()
+        scope:OnChanged(properties.Value, function()
             local H, S, V = properties.Value.Value:ToHSV()
             self.H.Value = H
             self.S.Value = S
             self.V.Value = V
-        end))
+        end)
     end
 
     return Frame

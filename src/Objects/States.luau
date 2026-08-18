@@ -13,5 +13,6 @@ States.PrimarySelected = Scope:Value(nil)
 States.IsEffectModule = Scope:Value(false)
 States.RepeatEmit = Scope:Value(false)
 States.RepeatEmitDelay = Scope:Value(1)
+States.IsPickingInstance = Scope:Value(false)
 
 return States

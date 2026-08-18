@@ -256,43 +256,62 @@ function CurveEditor:Construct(scope, properties)
     end
 
     local function DrawDot(parent, position, size, color)
-        local Dot = scope:New("Frame", {
-            Parent = parent,
-            Size = UDim2.fromOffset(size, size),
-            Position = UDim2.fromOffset(position.X - (size * 0.5), position.Y - (size * 0.5)),
-            BackgroundColor3 = color,
-            BorderSizePixel = 0,
-            ZIndex = parent.ZIndex,
+        local Dot = Instance.new("Frame")
+        Dot.Parent = parent
+        Dot.Size = UDim2.fromOffset(size, size)
+        Dot.Position = UDim2.fromOffset(position.X - (size * 0.5), position.Y - (size * 0.5))
+        Dot.BackgroundColor3 = color
+        Dot.BorderSizePixel = 0
+        Dot.ZIndex = parent.ZIndex
 
-            [Seam.Children] = {
-                scope:New("UICorner", {
-                    CornerRadius = UDim.new(1, 0),
-                }),
-            },
-        })
+        local Corner = Instance.new("UICorner")
+        Corner.CornerRadius = UDim.new(1, 0)
+        Corner.Parent = Dot
 
         return Dot
     end
 
-        local function DrawLine(fromPosition, toPosition, color)
+    local function DrawLine(fromPosition, toPosition, color)
         local Delta = toPosition - fromPosition
         local Distance = Delta.Magnitude
         if Distance <= 0 then
             return
         end
 
-        -- A single rotated frame is much cheaper than creating a dot for every
-        -- few pixels of every curve segment during a drag.
-        scope:New("Frame", {
-            Parent = PathLayer,
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.fromOffset((fromPosition.X + toPosition.X) * 0.5, (fromPosition.Y + toPosition.Y) * 0.5),
-            Size = UDim2.fromOffset(Distance, 2),
-            Rotation = math.deg(math.atan2(Delta.Y, Delta.X)),
-            BackgroundColor3 = color,
-            BorderSizePixel = 0,
-            ZIndex = PathLayer.ZIndex,
-        })
+        local Line = Instance.new("Frame")
+        Line.Parent = PathLayer
+        Line.AnchorPoint = Vector2.new(0.5, 0.5)
+        Line.Position = UDim2.fromOffset((fromPosition.X + toPosition.X) * 0.5, (fromPosition.Y + toPosition.Y) * 0.5)
+        Line.Size = UDim2.fromOffset(Distance, 2)
+        Line.Rotation = math.deg(math.atan2(Delta.Y, Delta.X))
+        Line.BackgroundColor3 = color
+        Line.BorderSizePixel = 0
+        Line.ZIndex = PathLayer.ZIndex
+    end
+
+    local function DrawBezierSegment(P0, P1, P2, P3, color)
+        local Last = P0
+        local Steps = 48
+        for step = 1, Steps do
+            local T = step / Steps
+            local Current = CubicBezier(P0, P1, P2, P3, T)
+            DrawLine(Last, Current, color)
+            Last = Current
+        end
+    end
+
+    local function CreateHitTarget(parent, position, size, zIndex, onInputBegan)
+        local Hit = Instance.new("TextButton")
+        Hit.Parent = parent
+        Hit.Size = UDim2.fromOffset(size, size)
+        Hit.Position = UDim2.fromOffset(position.X - size * 0.5, position.Y - size * 0.5)
+        Hit.BackgroundTransparency = 1
+        Hit.Text = ""
+        Hit.AutoButtonColor = false
+        Hit.Active = true
+        Hit.ZIndex = zIndex
+        Hit.InputBegan:Connect(onInputBegan)
+        return Hit
     end
 
     local function ClearRenderLayers()
@@ -334,22 +353,7 @@ function CurveEditor:Construct(scope, properties)
                 local P2 = ToPixel(NextPoint.Time + NextPoint.InHandleX, NextPoint.Value + NextPoint.InHandleY)
                 local P3 = ToPixel(NextPoint.Time, NextPoint.Value)
 
-                local Last = P0
-                local Steps = 40
-                for step = 1, Steps do
-                    local T = step / Steps
-                    local Current = CubicBezier(P0, P1, P2, P3, T)
-                    DrawLine(Last, Current, Color3.fromRGB(108, 175, 255))
-                    Last = Current
-                end
-
-                pcall(function()
-                    local PathObject = Instance.new("Path2D")
-                    PathObject.Name = "CurvePath"
-                    PathObject:SetAttribute("P0", string.format("%f,%f", point.Time, point.Value))
-                    PathObject:SetAttribute("P1", string.format("%f,%f", NextPoint.Time, NextPoint.Value))
-                    PathObject.Parent = PathLayer
-                end)
+                DrawBezierSegment(P0, P1, P2, P3, Color3.fromRGB(108, 175, 255))
             end
 
             if index > 1 then
@@ -357,18 +361,7 @@ function CurveEditor:Construct(scope, properties)
                 DrawLine(PointPixel, InPixel, Color3.fromRGB(95, 120, 170))
                 DrawDot(HandleLayer, InPixel, 7, Color3.fromRGB(130, 180, 255))
 
-                local InHit = scope:New("TextButton", {
-                    Parent = HandleLayer,
-                    Size = UDim2.fromOffset(14, 14),
-                    Position = UDim2.fromOffset(InPixel.X - 7, InPixel.Y - 7),
-                    BackgroundTransparency = 1,
-                    Text = "",
-                    AutoButtonColor = false,
-                    Active = properties.Active,
-                })
-                InHit.ZIndex = 60
-
-                scope:AddObject(InHit.InputBegan:Connect(function(input)
+                CreateHitTarget(HandleLayer, InPixel, 14, 60, function(input)
                     if not ReadActiveValue(properties.Active) then
                         return
                     end
@@ -384,7 +377,7 @@ function CurveEditor:Construct(scope, properties)
                     DragStartHandleY = point.InHandleY
                     self.IsDragging.Value = true
                     DragSession.Start(DragStartMouse, input)
-                end))
+                end)
             end
 
             if index < #Points then
@@ -392,18 +385,7 @@ function CurveEditor:Construct(scope, properties)
                 DrawLine(PointPixel, OutPixel, Color3.fromRGB(95, 120, 170))
                 DrawDot(HandleLayer, OutPixel, 7, Color3.fromRGB(130, 180, 255))
 
-                local OutHit = scope:New("TextButton", {
-                    Parent = HandleLayer,
-                    Size = UDim2.fromOffset(14, 14),
-                    Position = UDim2.fromOffset(OutPixel.X - 7, OutPixel.Y - 7),
-                    BackgroundTransparency = 1,
-                    Text = "",
-                    AutoButtonColor = false,
-                    Active = properties.Active,
-                })
-                OutHit.ZIndex = 60
-
-                scope:AddObject(OutHit.InputBegan:Connect(function(input)
+                CreateHitTarget(HandleLayer, OutPixel, 14, 60, function(input)
                     if not ReadActiveValue(properties.Active) then
                         return
                     end
@@ -419,23 +401,12 @@ function CurveEditor:Construct(scope, properties)
                     DragStartHandleY = point.OutHandleY
                     self.IsDragging.Value = true
                     DragSession.Start(DragStartMouse, input)
-                end))
+                end)
             end
 
             DrawDot(PointLayer, PointPixel, 10, Color3.fromRGB(245, 245, 245))
 
-            local PointHit = scope:New("TextButton", {
-                Parent = PointLayer,
-                Size = UDim2.fromOffset(16, 16),
-                Position = UDim2.fromOffset(PointPixel.X - 8, PointPixel.Y - 8),
-                BackgroundTransparency = 1,
-                Text = "",
-                AutoButtonColor = false,
-                Active = properties.Active,
-            })
-            PointHit.ZIndex = 61
-
-            scope:AddObject(PointHit.InputBegan:Connect(function(input)
+            CreateHitTarget(PointLayer, PointPixel, 16, 61, function(input)
                 if not ReadActiveValue(properties.Active) then
                     return
                 end
@@ -466,7 +437,7 @@ function CurveEditor:Construct(scope, properties)
                     properties.Points.Value = Updated
                     RenderVisuals()
                 end
-            end))
+            end)
         end
     end
 
@@ -497,38 +468,40 @@ function CurveEditor:Construct(scope, properties)
         return false
     end
 
-    scope:AddObject(InteractionLayer.InputBegan:Connect(function(input)
-        if not ReadActiveValue(properties.Active) then
-            return
-        end
+    Seam.New(InteractionLayer, {
+        [Seam.OnEvent("InputBegan")] = function(input)
+            if not ReadActiveValue(properties.Active) then
+                return
+            end
 
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-            return
-        end
+            if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                return
+            end
 
-        local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
-        local MouseLocation = LocalInput.GetLocalFromScreenPosition(Frame, ScreenPosition)
+            local ScreenPosition = Vector2.new(input.Position.X, input.Position.Y)
+            local MouseLocation = LocalInput.GetLocalFromScreenPosition(Frame, ScreenPosition)
 
-        if IsNearExistingControl(MouseLocation) then
-            return
-        end
+            if IsNearExistingControl(MouseLocation) then
+                return
+            end
 
-        local Time, Value = ToCurvePosition(MouseLocation)
+            local Time, Value = ToCurvePosition(MouseLocation)
 
-        local NewPoints = GetPointsCopy()
-        table.insert(NewPoints, {
-            Time = Time,
-            Value = Value,
-            InHandleX = -0.12,
-            InHandleY = 0,
-            OutHandleX = 0.12,
-            OutHandleY = 0,
-        })
-        SortPoints(NewPoints)
+            local NewPoints = GetPointsCopy()
+            table.insert(NewPoints, {
+                Time = Time,
+                Value = Value,
+                InHandleX = -0.12,
+                InHandleY = 0,
+                OutHandleX = 0.12,
+                OutHandleY = 0,
+            })
+            SortPoints(NewPoints)
 
-        properties.Points.Value = NewPoints
-        RenderVisuals()
-    end))
+            properties.Points.Value = NewPoints
+            RenderVisuals()
+        end,
+    })
 
     local function StopDrag()
         self.IsDragging.Value = false
@@ -585,14 +558,18 @@ function CurveEditor:Construct(scope, properties)
         end
     end, StopDrag)
 
-    scope:AddObject(Seam.OnChanged(self.IsDragging, function()
+    scope:OnChanged(self.IsDragging, function()
         if not self.IsDragging.Value then
             DragSession.Stop()
         end
-    end))
+    end)
 
-    scope:AddObject(Seam.OnChanged(properties.Points, RenderVisuals))
-    scope:AddObject(Frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(RenderVisuals))
+    scope:OnChanged(properties.Points, RenderVisuals)
+    scope:OnChanged(Frame, function(property)
+        if property == "AbsoluteSize" then
+            RenderVisuals()
+        end
+    end)
     RenderVisuals()
 
     return Frame
