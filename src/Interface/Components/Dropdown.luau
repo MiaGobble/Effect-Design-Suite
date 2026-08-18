@@ -154,6 +154,8 @@ function Dropdown:Construct(scope, properties)
 
             return tostring(Current)
         end),
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        TextWrapped = false,
         ZIndex = BASE_Z + 2,
     })
 

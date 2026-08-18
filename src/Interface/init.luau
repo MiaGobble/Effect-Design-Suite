@@ -20,18 +20,47 @@ local COLOR_SEQUENCE_ATTRIBUTE = "EffectDesignerOklabColorSequence"
 local CURVE_ATTRIBUTE_PREFIX = "EffectDesignerCurve_"
 local TEXTURE_ID_PREFIX = "rbxassetid://"
 local MAIN_WIDGET_ID = "EffectDesignerSuite"
-local MAIN_WIDGET_TITLE = "Effect Designer Suite"
+local MAIN_WIDGET_TITLE = "Effect Designer Suite — Core"
+local EDITING_WIDGET_ID = "EffectDesignerSuiteEditing"
+local EDITING_WIDGET_TITLE = "Effect Designer Suite — Editing"
+local ADVANCED_WIDGET_ID = "EffectDesignerSuiteAdvanced"
+local ADVANCED_WIDGET_TITLE = "Effect Designer Suite — Advanced"
 local COLOR_PICKER_WIDGET_ID = "EffectDesignerSuiteColorPicker"
 local ASSETS_WIDGET_ID = "EffectDesignerSuiteAssets"
+local ASSETS_WIDGET_TITLE = "Effect Designer Suite — Presets"
+local CURVE_EDITOR_WIDGET_ID = "EffectDesignerSuiteCurveEditor"
+local CURVE_EDITOR_WIDGET_TITLE = "Effect Designer Suite — Curve Editor"
+local COLOR_SEQUENCE_WIDGET_ID = "EffectDesignerSuiteColorSequence"
+local COLOR_SEQUENCE_WIDGET_TITLE = "Effect Designer Suite — Color Sequence"
 local MAIN_WIDGET_WIDTH = 320
 local MAIN_WIDGET_HEIGHT = 480
 local MAIN_WIDGET_MIN_SIZE = 320
+local EDITOR_WIDGET_WIDTH = 360
+local EDITOR_WIDGET_HEIGHT = 420
+local NOT_CONFIGURABLE_TEXT = "this instance is not configurable with Effect Designer Suite"
+local OTHER_TOOLS_HINT = "Looking for other tools? They're now separate widgets!"
+local COPY_BUTTON_IMAGE_ID = "103287906385313"
+local PASTE_BUTTON_IMAGE_ID = "89773130507890"
+local PROPERTY_ICON_BUTTON_SIZE = 24
+local PROPERTY_ICON_BUTTON_GAP = 4
+local ICON_ANIMATION_INFO = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local ICON_HOVER_SCALE = 1.12
+local ICON_PRESS_SCALE = 0.88
+local ICON_DEFAULT_COLOR = Color3.fromRGB(255, 255, 255)
+local ICON_HOVER_COLOR = Color3.fromRGB(220, 230, 255)
+local ICON_PRESS_COLOR = Color3.fromRGB(170, 190, 230)
+local EMIT_FIELD_LABEL_HEIGHT = 16
+local EMIT_FIELD_BOX_HEIGHT = 36
+local EMIT_ATTRIBUTE_ROW_HEIGHT = 54
+local CURVE_PREVIEW_LINE_SAMPLES = 48
+local CURVE_PREVIEW_GRADIENT_SAMPLES = 19
 
 -- Services
 local SelectionService = game:GetService("Selection")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local ContentProvider = game:GetService("ContentProvider")
+local TweenService = game:GetService("TweenService")
 
 -- Imports
 local Bin = script.Parent
@@ -433,7 +462,17 @@ local function CreateBoundTextBox(scope, parent : Instance, state, active, place
         PlaceholderText = placeholderText,
         Position = position,
         Size = size,
+        TextWrapped = false,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ClipsDescendants = true,
     })
+
+    local InnerTextBox = if TextBox:IsA("TextBox") then TextBox else TextBox:FindFirstChildWhichIsA("TextBox", true)
+    if InnerTextBox then
+        InnerTextBox.TextWrapped = false
+        InnerTextBox.TextTruncate = Enum.TextTruncate.AtEnd
+        InnerTextBox.ClipsDescendants = true
+    end
 
     BindTextBox(scope, TextBox, state)
 
@@ -450,6 +489,345 @@ local function CreateActionButton(scope, layoutOrder : number, text : string, ac
     })
 end
 
+local function GetPropertyIconClusterWidth()
+    return PROPERTY_ICON_BUTTON_SIZE * 2 + PROPERTY_ICON_BUTTON_GAP
+end
+
+local function CreatePropertyIconButton(scope, parent, imageId : string, xOffset : number, callback)
+    local Button = scope:New("ImageButton", {
+        Parent = parent,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Image = FormatTextureId(imageId),
+        ImageColor3 = ICON_DEFAULT_COLOR,
+        ScaleType = Enum.ScaleType.Fit,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(1, xOffset + PROPERTY_ICON_BUTTON_SIZE / 2, 0.5, 0),
+        Size = UDim2.fromOffset(PROPERTY_ICON_BUTTON_SIZE, PROPERTY_ICON_BUTTON_SIZE),
+        [Seam.OnEvent("Activated")] = callback,
+    })
+
+    local Scale = scope:New("UIScale", {
+        Parent = Button,
+        Scale = 1,
+    })
+
+    local IsHovering = false
+    local IsPressed = false
+
+    local function PlayIconState()
+        local TargetScale = 1
+        local TargetColor = ICON_DEFAULT_COLOR
+
+        if IsPressed then
+            TargetScale = ICON_PRESS_SCALE
+            TargetColor = ICON_PRESS_COLOR
+        elseif IsHovering then
+            TargetScale = ICON_HOVER_SCALE
+            TargetColor = ICON_HOVER_COLOR
+        end
+
+        TweenService:Create(Scale, ICON_ANIMATION_INFO, { Scale = TargetScale }):Play()
+        TweenService:Create(Button, ICON_ANIMATION_INFO, { ImageColor3 = TargetColor }):Play()
+    end
+
+    Button.MouseEnter:Connect(function()
+        IsHovering = true
+        PlayIconState()
+    end)
+    Button.MouseLeave:Connect(function()
+        IsHovering = false
+        IsPressed = false
+        PlayIconState()
+    end)
+    Button.MouseButton1Down:Connect(function()
+        IsPressed = true
+        PlayIconState()
+    end)
+    Button.MouseButton1Up:Connect(function()
+        IsPressed = false
+        PlayIconState()
+    end)
+
+    return Button
+end
+
+local function CreateListWidget(scope, widgetId : string, title : string, initialEnabled : boolean, width : number, height : number, dockState)
+    local Widget = scope:New(Jian.Widget, {
+        WidgetId = widgetId,
+        Title = title,
+        InitialDockState = dockState or Enum.InitialDockState.Float,
+        InitialEnabled = initialEnabled,
+        OverridePreviousState = false,
+        DefaultWidth = width,
+        DefaultHeight = height,
+        MinimumWidth = MAIN_WIDGET_MIN_SIZE,
+        MinimumHeight = MAIN_WIDGET_MIN_SIZE,
+    }) :: DockWidgetPluginGui
+
+    Widget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    scope:New(Jian.Background, {
+        Parent = Widget,
+    })
+
+    local Container = scope:New(Jian.ScrollingList, {
+        Parent = Widget,
+        Size = UDim2.fromScale(1, 1),
+        ScrollBarThickness = 8,
+
+        [Seam.Children] = {
+            scope:New("UIPadding", {
+                PaddingTop = UDim.new(0, 16),
+                PaddingBottom = UDim.new(0, 16),
+                PaddingLeft = UDim.new(0, 16),
+                PaddingRight = UDim.new(0, 16),
+            }),
+        },
+    })
+
+    return Widget, Container
+end
+
+local function SplitNumbers(text : string) : {number}
+    local Numbers = {}
+
+    for token in string.gmatch(text, "[^,;%s]+") do
+        local Number = tonumber(token)
+        if Number then
+            table.insert(Numbers, Number)
+        end
+    end
+
+    return Numbers
+end
+
+local function FormatPropertyValue(value) : string
+    local ValueType = typeof(value)
+
+    if ValueType == "number" then
+        return tostring(value)
+    elseif ValueType == "boolean" then
+        return if value then "true" else "false"
+    elseif ValueType == "string" then
+        return value
+    elseif ValueType == "Vector3" then
+        return string.format("%s, %s, %s", tostring(value.X), tostring(value.Y), tostring(value.Z))
+    elseif ValueType == "Vector2" then
+        return string.format("%s, %s", tostring(value.X), tostring(value.Y))
+    elseif ValueType == "NumberRange" then
+        return string.format("%s, %s", tostring(value.Min), tostring(value.Max))
+    elseif ValueType == "Color3" then
+        return string.format("%d, %d, %d", math.round(value.R * 255), math.round(value.G * 255), math.round(value.B * 255))
+    elseif ValueType == "EnumItem" then
+        return value.Name
+    elseif ValueType == "CFrame" then
+        return table.concat({value:GetComponents()}, ", ")
+    elseif ValueType == "UDim" then
+        return string.format("%s, %s", tostring(value.Scale), tostring(value.Offset))
+    elseif ValueType == "UDim2" then
+        return string.format(
+            "%s, %s, %s, %s",
+            tostring(value.X.Scale),
+            tostring(value.X.Offset),
+            tostring(value.Y.Scale),
+            tostring(value.Y.Offset)
+        )
+    elseif ValueType == "Rect" then
+        return string.format("%s, %s, %s, %s", tostring(value.Min.X), tostring(value.Min.Y), tostring(value.Max.X), tostring(value.Max.Y))
+    elseif ValueType == "BrickColor" then
+        return value.Name
+    elseif ValueType == "Instance" then
+        return value:GetFullName()
+    elseif ValueType == "NumberSequence" then
+        return "NumberSequence"
+    elseif ValueType == "ColorSequence" then
+        return "ColorSequence"
+    end
+
+    return tostring(value)
+end
+
+local function SampleNumberSequence(sequence : NumberSequence, time : number)
+    local Keys = sequence.Keypoints
+    if #Keys == 0 then
+        return 0
+    end
+
+    if time <= Keys[1].Time then
+        return Keys[1].Value
+    end
+
+    for index = 1, #Keys - 1 do
+        local Start = Keys[index]
+        local Finish = Keys[index + 1]
+        if time <= Finish.Time then
+            local Duration = Finish.Time - Start.Time
+            local Alpha = if Duration <= 0 then 0 else (time - Start.Time) / Duration
+            return Start.Value + (Finish.Value - Start.Value) * Alpha
+        end
+    end
+
+    return Keys[#Keys].Value
+end
+
+local function GetNumberSequenceRange(sequence : NumberSequence)
+    local MinValue = math.huge
+    local MaxValue = -math.huge
+
+    for _, keypoint in sequence.Keypoints do
+        MinValue = math.min(MinValue, keypoint.Value)
+        MaxValue = math.max(MaxValue, keypoint.Value)
+    end
+
+    if MinValue == math.huge then
+        return 0, 1
+    end
+
+    if MaxValue <= MinValue then
+        MaxValue = MinValue + 1
+    end
+
+    return MinValue, MaxValue
+end
+
+local function GetCFrameOrientationDegrees(cframe : CFrame)
+    local Rx, Ry, Rz = cframe:ToOrientation()
+    return Vector3.new(math.deg(Rx), math.deg(Ry), math.deg(Rz))
+end
+
+local function CFrameFromPositionAndOrientation(position : Vector3, orientation : Vector3)
+    return CFrame.new(position) * CFrame.fromOrientation(math.rad(orientation.X), math.rad(orientation.Y), math.rad(orientation.Z))
+end
+
+local function GetCFrameComponentLabel(property : string, kind : string)
+    if property == "CFrame" then
+        return kind
+    end
+
+    return property .. " " .. kind
+end
+
+local function GetEnumItemNames(enumItem)
+    local Names = {}
+    for _, item in enumItem.EnumType:GetEnumItems() do
+        table.insert(Names, item.Name)
+    end
+    return Names
+end
+
+local function ParsePropertyValue(currentValue, text : string)
+    local ValueType = typeof(currentValue)
+
+    if ValueType == "number" then
+        return tonumber(text)
+    elseif ValueType == "boolean" then
+        local Lower = string.lower(text)
+        if Lower == "true" or Lower == "1" then
+            return true
+        elseif Lower == "false" or Lower == "0" then
+            return false
+        end
+
+        return nil
+    elseif ValueType == "string" then
+        return text
+    elseif ValueType == "Vector3" then
+        local Numbers = SplitNumbers(text)
+        if #Numbers >= 3 then
+            return Vector3.new(Numbers[1], Numbers[2], Numbers[3])
+        elseif #Numbers == 1 then
+            return Vector3.new(Numbers[1], Numbers[1], Numbers[1])
+        end
+
+        return nil
+    elseif ValueType == "Vector2" then
+        local Numbers = SplitNumbers(text)
+        if #Numbers >= 2 then
+            return Vector2.new(Numbers[1], Numbers[2])
+        end
+
+        return nil
+    elseif ValueType == "NumberRange" then
+        local Numbers = SplitNumbers(text)
+        if #Numbers >= 2 then
+            return NumberRange.new(Numbers[1], Numbers[2])
+        elseif #Numbers == 1 then
+            return NumberRange.new(Numbers[1], Numbers[1])
+        end
+
+        return nil
+    elseif ValueType == "Color3" then
+        local Numbers = SplitNumbers(text)
+        if #Numbers >= 3 then
+            local Red, Green, Blue = Numbers[1], Numbers[2], Numbers[3]
+            if Red > 1 or Green > 1 or Blue > 1 then
+                return Color3.fromRGB(Red, Green, Blue)
+            end
+
+            return Color3.new(Red, Green, Blue)
+        end
+
+        return nil
+    elseif ValueType == "EnumItem" then
+        local Success, Item = pcall(function()
+            return currentValue.EnumType[text]
+        end)
+        if Success then
+            return Item
+        end
+
+        return nil
+    elseif ValueType == "CFrame" then
+        local Numbers = SplitNumbers(text)
+        if #Numbers >= 12 then
+            return CFrame.new(table.unpack(Numbers, 1, 12))
+        elseif #Numbers >= 3 then
+            return CFrame.new(Numbers[1], Numbers[2], Numbers[3])
+        end
+
+        return nil
+    elseif ValueType == "UDim" then
+        local Numbers = SplitNumbers(text)
+        if #Numbers >= 2 then
+            return UDim.new(Numbers[1], Numbers[2])
+        end
+
+        return nil
+    elseif ValueType == "UDim2" then
+        local Numbers = SplitNumbers(text)
+        if #Numbers >= 4 then
+            return UDim2.new(Numbers[1], Numbers[2], Numbers[3], Numbers[4])
+        end
+
+        return nil
+    elseif ValueType == "Rect" then
+        local Numbers = SplitNumbers(text)
+        if #Numbers >= 4 then
+            return Rect.new(Numbers[1], Numbers[2], Numbers[3], Numbers[4])
+        end
+
+        return nil
+    elseif ValueType == "BrickColor" then
+        local Number = tonumber(text)
+        if Number then
+            return BrickColor.new(Number)
+        end
+
+        local Success, Color = pcall(function()
+            return BrickColor.new(text)
+        end)
+        if Success then
+            return Color
+        end
+
+        return nil
+    end
+
+    return nil
+end
+
 local function SyncSelectionAttribute(state, attributeName : string)
     local CurrentInstance = States.PrimarySelected.Value
 
@@ -461,7 +839,7 @@ local function SyncSelectionAttribute(state, attributeName : string)
     state.Value = tostring(CurrentInstance:GetAttribute(attributeName) or "")
 end
 
-function Interface:Init() : DockWidgetPluginGui
+function Interface:Init()
     if InterfaceScope then
         InterfaceScope:Destroy()
         InterfaceScope = nil
@@ -470,24 +848,73 @@ function Interface:Init() : DockWidgetPluginGui
     local Scope = Seam.Scope(Seam)
     InterfaceScope = Scope
 
-    local MainWidget = Scope:New(Jian.Widget, {
-        WidgetId = MAIN_WIDGET_ID,
-        Title = MAIN_WIDGET_TITLE,
-        InitialDockState = Enum.InitialDockState.Left,
-        InitialEnabled = true,
-        OverridePreviousState = false,
-        DefaultWidth = MAIN_WIDGET_WIDTH,
-        DefaultHeight = MAIN_WIDGET_HEIGHT,
-        MinimumWidth = MAIN_WIDGET_MIN_SIZE,
-        MinimumHeight = MAIN_WIDGET_MIN_SIZE,
-    }) :: DockWidgetPluginGui
+    local MainWidget, Container = CreateListWidget(
+        Scope,
+        MAIN_WIDGET_ID,
+        MAIN_WIDGET_TITLE,
+        true,
+        MAIN_WIDGET_WIDTH,
+        MAIN_WIDGET_HEIGHT,
+        Enum.InitialDockState.Left
+    )
+    local EditingWidget, EditingContainer = CreateListWidget(
+        Scope,
+        EDITING_WIDGET_ID,
+        EDITING_WIDGET_TITLE,
+        false,
+        MAIN_WIDGET_WIDTH,
+        MAIN_WIDGET_HEIGHT,
+        Enum.InitialDockState.Float
+    )
+    local AdvancedWidget, AdvancedContainer = CreateListWidget(
+        Scope,
+        ADVANCED_WIDGET_ID,
+        ADVANCED_WIDGET_TITLE,
+        false,
+        MAIN_WIDGET_WIDTH,
+        MAIN_WIDGET_HEIGHT,
+        Enum.InitialDockState.Float
+    )
+    local CurveEditorDock, CurveEditorContainer = CreateListWidget(
+        Scope,
+        CURVE_EDITOR_WIDGET_ID,
+        CURVE_EDITOR_WIDGET_TITLE,
+        false,
+        EDITOR_WIDGET_WIDTH,
+        EDITOR_WIDGET_HEIGHT,
+        Enum.InitialDockState.Float
+    )
+    local ColorSequenceDock, ColorSequenceContainer = CreateListWidget(
+        Scope,
+        COLOR_SEQUENCE_WIDGET_ID,
+        COLOR_SEQUENCE_WIDGET_TITLE,
+        false,
+        EDITOR_WIDGET_WIDTH,
+        280,
+        Enum.InitialDockState.Float
+    )
+
+    local function GetInspectedInstance()
+        local RawSelection = States.RawSelection.Value
+        if #RawSelection == 0 then
+            return nil
+        end
+
+        local First = RawSelection[1]
+        if PropertyMaps.IsConfigurableInstance(First) then
+            return First
+        end
+
+        return nil
+    end
 
     local HasEditableSelection = Scope:Computed(function(use)
         return #use(States.CurrentlySelected) > 0
     end)
 
-    local HasSingleSelection = Scope:Computed(function(use)
-        return use(States.IsEmittable) and #use(States.CurrentlySelected) == 1
+    local HasConfigurableSelection = Scope:Computed(function(use)
+        local RawSelection = use(States.RawSelection)
+        return #RawSelection >= 1 and PropertyMaps.IsConfigurableInstance(RawSelection[1])
     end)
 
     local HasRawSelection = Scope:Computed(function(use)
@@ -506,12 +933,8 @@ function Interface:Init() : DockWidgetPluginGui
     end
 
     local HasColorSequenceSelection = Scope:Computed(function(use)
-        for _, instance in use(States.CurrentlySelected) do
-            if CanEditColorSequence(instance) then
-                return true
-            end
-        end
-        return false
+        local RawSelection = use(States.RawSelection)
+        return #RawSelection >= 1 and PropertyMaps.IsColorSequenceProperty(RawSelection[1], "Color")
     end)
 
     local HasParticleEmitterSelection = Scope:Computed(function(use)
@@ -544,24 +967,24 @@ function Interface:Init() : DockWidgetPluginGui
     end)
 
     local SelectionSummary = Scope:Computed(function(use)
-        local Selected = use(States.CurrentlySelected)
+        local RawSelection = use(States.RawSelection)
 
-        if #Selected == 0 then
-            return "No valid emitters selected"
+        if #RawSelection == 0 or not PropertyMaps.IsConfigurableInstance(RawSelection[1]) then
+            return NOT_CONFIGURABLE_TEXT
         end
 
-        if #Selected == 1 then
-            return "Editing 1 valid object"
+        local Inspected = RawSelection[1]
+        if #RawSelection == 1 then
+            return string.format("%s — %s", Inspected.ClassName, Inspected.Name)
         end
 
-        return string.format("Editing %d valid objects", #Selected)
+        return string.format("%s — %s (+%d)", Inspected.ClassName, Inspected.Name, #RawSelection - 1)
     end)
 
     local EmitCountText = Scope:Value("")
     local EmitDelayText = Scope:Value("")
     local EmitDurationText = Scope:Value("")
     local RepeatEmitDelayText = Scope:Value(tostring(States.RepeatEmitDelay.Value))
-    local CopyPropertyText = Scope:Value("Size")
     local ResizeMultiplierValue = Scope:Value(1)
     local MathPropertyText = Scope:Value("Size")
     local MathAmountValue = Scope:Value(3)
@@ -629,7 +1052,7 @@ function Interface:Init() : DockWidgetPluginGui
 
     local function ReadCurveState()
         local Property = CurvePropertyText.Value
-        local Instance = States.CurrentlySelected.Value[1]
+        local Instance = GetInspectedInstance()
         if not Property or Property == "" or not Instance then
             ResetCurveState()
             return
@@ -685,12 +1108,9 @@ function Interface:Init() : DockWidgetPluginGui
     local ColorPickerWidget = nil
 
     local function ReadColorSequenceState()
-        local SourceInstance = nil
-        for _, instance in States.CurrentlySelected.Value do
-            if CanEditColorSequence(instance) then
-                SourceInstance = instance
-                break
-            end
+        local SourceInstance = GetInspectedInstance()
+        if SourceInstance and not CanEditColorSequence(SourceInstance) then
+            SourceInstance = nil
         end
 
         ActiveColorPointIndex.Value = nil
@@ -761,12 +1181,6 @@ function Interface:Init() : DockWidgetPluginGui
 
     local PreviewEntries = {}
     local IsAssetBrowserInitialized = false
-
-    MainWidget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-    Scope:New(Jian.Background, {
-        Parent = MainWidget,
-    })
 
     ColorPickerWidget = Scope:New(Jian.Widget, {
         WidgetId = COLOR_PICKER_WIDGET_ID,
@@ -843,21 +1257,6 @@ function Interface:Init() : DockWidgetPluginGui
         ColorSequencePoints.Value = UpdatedPoints
     end))
 
-    local Container = Scope:New(Jian.ScrollingList, {
-        Parent = MainWidget,
-        Size = UDim2.fromScale(1, 1),
-        ScrollBarThickness = 8,
-
-        [Seam.Children] = {
-            Scope:New("UIPadding", {
-                PaddingTop = UDim.new(0, 16),
-                PaddingBottom = UDim.new(0, 16),
-                PaddingLeft = UDim.new(0, 16),
-                PaddingRight = UDim.new(0, 16),
-            }),
-        },
-    })
-
     local UpdateWarningText = Scope:Value("")
     Scope:New("TextLabel", {
         Parent = Container,
@@ -899,19 +1298,25 @@ function Interface:Init() : DockWidgetPluginGui
         end
     end)
 
-    Scope:New(Jian.Text, {
+    Scope:New("TextLabel", {
         Parent = Container,
-        Text = SelectionSummary,
-        Size = UDim2.new(1, 0, 0, 22),
-        AutomaticSize = Enum.AutomaticSize.None,
-        TextXAlignment = Enum.TextXAlignment.Left,
         LayoutOrder = 0,
-        Active = HasEditableSelection,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Text = SelectionSummary,
+        TextWrapped = true,
+        TextColor3 = Color3.fromRGB(220, 220, 220),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
     })
 
     local AssetWidget = Scope:New(Jian.Widget, {
         WidgetId = ASSETS_WIDGET_ID,
-        Title = "Asset Presets",
+        Title = ASSETS_WIDGET_TITLE,
         InitialDockState = Enum.InitialDockState.Float,
         InitialEnabled = false,
         OverridePreviousState = false,
@@ -1361,39 +1766,26 @@ function Interface:Init() : DockWidgetPluginGui
         end
     end))
 
-    local function CreateCorePropertyRow(layoutOrder : number, labelText : string, attributeName : string, textState)
-        local Row = CreateRow(Scope, layoutOrder)
+    local function BindEmitAttributeBox(textBox, textState, attributeName : string)
         local IsFocused = false
         local FocusStartText = textState.Value
         local IsDirty = false
 
-        CreateLabel(Scope, Row, labelText)
-
-        local TextBox = CreateBoundTextBox(
-            Scope,
-            Row,
-            textState,
-            HasEditableSelection,
-            "0",
-            UDim2.fromScale(0.35, 0),
-            UDim2.fromScale(0.65, 1)
-        )
-
-        Scope:AddObject(TextBox.Focused:Connect(function()
+        Scope:AddObject(textBox.Focused:Connect(function()
             IsFocused = true
-            FocusStartText = TextBox.Text
+            FocusStartText = textBox.Text
             IsDirty = false
         end))
 
-        Scope:AddObject(TextBox:GetPropertyChangedSignal("Text"):Connect(function()
+        Scope:AddObject(textBox:GetPropertyChangedSignal("Text"):Connect(function()
             if not IsFocused then
                 return
             end
 
-            IsDirty = TextBox.Text ~= FocusStartText
+            IsDirty = textBox.Text ~= FocusStartText
         end))
 
-        Scope:AddObject(TextBox.FocusLost:Connect(function()
+        Scope:AddObject(textBox.FocusLost:Connect(function()
             IsFocused = false
 
             if not IsDirty then
@@ -1401,14 +1793,12 @@ function Interface:Init() : DockWidgetPluginGui
             end
 
             local CurrentlySelected = States.CurrentlySelected.Value
-
             if #CurrentlySelected == 0 then
                 IsDirty = false
                 return
             end
 
             local Number = tonumber(textState.Value)
-
             if not Number or Number == 0 then
                 IsDirty = false
                 return
@@ -1419,29 +1809,84 @@ function Interface:Init() : DockWidgetPluginGui
             end
 
             IsDirty = false
-            FocusStartText = TextBox.Text
+            FocusStartText = textBox.Text
         end))
-
-        return Row
     end
 
-    local CoreEmitCountRow = CreateCorePropertyRow(2, "Emit Count", "EmitCount", EmitCountText)
-    local CoreEmitDelayRow = CreateCorePropertyRow(3, "Emit Delay", "EmitDelay", EmitDelayText)
-    local CoreEmitDurationRow = CreateCorePropertyRow(4, "Emit Duration", "EmitDuration", EmitDurationText)
+    local function CreateEmitAttributeField(parent, position : UDim2, size : UDim2, labelText : string, attributeName : string, textState)
+        local Column = Scope:New("Frame", {
+            Parent = parent,
+            Position = position,
+            Size = size,
+            BackgroundTransparency = 1,
+        })
 
-    local EmitButton = CreateActionButton(Scope, 2, "Emit", States.IsEmittable, function()
+        Scope:New(Jian.Text, {
+            Parent = Column,
+            Text = labelText,
+            Size = UDim2.new(1, 0, 0, EMIT_FIELD_LABEL_HEIGHT),
+            AutomaticSize = Enum.AutomaticSize.None,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Active = false,
+        })
+
+        local TextBox = CreateBoundTextBox(
+            Scope,
+            Column,
+            textState,
+            HasEditableSelection,
+            "0",
+            UDim2.fromOffset(0, EMIT_FIELD_LABEL_HEIGHT),
+            UDim2.new(1, 0, 0, EMIT_FIELD_BOX_HEIGHT)
+        )
+        BindEmitAttributeBox(TextBox, textState, attributeName)
+
+        return Column
+    end
+
+    local EmitAttributesRow = Scope:New("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, EMIT_ATTRIBUTE_ROW_HEIGHT),
+        LayoutOrder = 1,
+    })
+    CreateEmitAttributeField(EmitAttributesRow, UDim2.fromScale(0, 0), UDim2.new(0.32, 0, 1, 0), "Count", "EmitCount", EmitCountText)
+    CreateEmitAttributeField(EmitAttributesRow, UDim2.fromScale(0.34, 0), UDim2.new(0.32, 0, 1, 0), "Delay", "EmitDelay", EmitDelayText)
+    CreateEmitAttributeField(EmitAttributesRow, UDim2.fromScale(0.68, 0), UDim2.new(0.32, 0, 1, 0), "Duration", "EmitDuration", EmitDurationText)
+
+    local EmitButton = CreateActionButton(Scope, 3, "Emit", States.IsEmittable, function()
         EmitUtils:EmitCurrent()
     end)
 
-    local RepeatRow = CreateRow(Scope, 3)
+    local RepeatRow = Scope:New("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, EMIT_ATTRIBUTE_ROW_HEIGHT),
+        LayoutOrder = 2,
+    })
+
+    local RepeatDelayColumn = Scope:New("Frame", {
+        Parent = RepeatRow,
+        Position = UDim2.fromScale(0, 0),
+        Size = UDim2.new(0.48, 0, 1, 0),
+        BackgroundTransparency = 1,
+    })
+
+    Scope:New(Jian.Text, {
+        Parent = RepeatDelayColumn,
+        Text = "repeat delay",
+        Size = UDim2.new(1, 0, 0, EMIT_FIELD_LABEL_HEIGHT),
+        AutomaticSize = Enum.AutomaticSize.None,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
+    })
+
     local RepeatDelayBox = CreateBoundTextBox(
         Scope,
-        RepeatRow,
+        RepeatDelayColumn,
         RepeatEmitDelayText,
         States.RepeatEmit,
-        "Repeat delay",
-        UDim2.new(0, 0, 0, 0),
-        UDim2.fromScale(0.48, 1)
+        "0",
+        UDim2.fromOffset(0, EMIT_FIELD_LABEL_HEIGHT),
+        UDim2.new(1, 0, 0, EMIT_FIELD_BOX_HEIGHT)
     )
 
     Scope:AddObject(RepeatDelayBox.FocusLost:Connect(function()
@@ -1457,104 +1902,690 @@ function Interface:Init() : DockWidgetPluginGui
 
     Scope:New(Jian.Checkbox, {
         Parent = RepeatRow,
-        Position = UDim2.new(0.52, 0, 0, 8),
+        Position = UDim2.new(0.52, 0, 0.5, -10),
         Size = UDim2.new(0.48, 0, 0, 20),
         Title = "Repeat Emit",
         Active = true,
         Value = States.RepeatEmit,
     })
 
-    local CopyOptions = Scope:Value({})
-    local CurveOptions = Scope:Value({})
+    local function GetPropertyEditTargets()
+        local Inspected = GetInspectedInstance()
+        if not Inspected then
+            return {}
+        end
 
-    local function RefreshDynamicOptions()
-        CopyOptions.Value = PropertyMaps.GetPropertiesForSelection(States.CurrentlySelected.Value, PropertyMaps.COPY_PROPERTIES_BY_CLASS)
-        CurveOptions.Value = PropertyMaps.GetPropertiesForSelection(States.CurrentlySelected.Value, PropertyMaps.CURVE_PROPERTIES_BY_CLASS)
+        local Targets = {}
+        for _, instance in States.RawSelection.Value do
+            if instance == Inspected then
+                table.insert(Targets, instance)
+            elseif Inspected:IsA("BasePart") and instance:IsA("BasePart") then
+                table.insert(Targets, instance)
+            elseif instance.ClassName == Inspected.ClassName then
+                table.insert(Targets, instance)
+            end
+        end
+
+        return Targets
+    end
+
+    local function OpenCurveEditor(property : string)
+        CurvePropertyText.Value = property
+        ReadCurveState()
+        CurveEditorDock.Enabled = true
+    end
+
+    local function OpenColorSequenceEditor()
+        ReadColorSequenceState()
+        ColorSequenceDock.Enabled = true
     end
 
     Scope:AddObject(Seam.OnChanged(States.CurrentlySelected, function()
-        RefreshDynamicOptions()
-
-        local NewCopyOptions = CopyOptions.Value
-        if #NewCopyOptions > 0 and not table.find(NewCopyOptions, CopyPropertyText.Value) then
-            CopyPropertyText.Value = NewCopyOptions[1]
-        elseif #NewCopyOptions == 0 then
-            CopyPropertyText.Value = ""
-        end
-
-        local NewCurveOptions = CurveOptions.Value
-        if #NewCurveOptions > 0 and not table.find(NewCurveOptions, CurvePropertyText.Value) then
-            CurvePropertyText.Value = NewCurveOptions[1]
-                elseif #NewCurveOptions == 0 then
-            CurvePropertyText.Value = ""
-        end
-
         ReadCurveState()
         ReadColorSequenceState()
     end))
     Scope:AddObject(Seam.OnChanged(CurvePropertyText, ReadCurveState))
-
-    RefreshDynamicOptions()
     ReadColorSequenceState()
 
-    local CopyPropertyDropdown = Scope:New(Dropdown, {
-        LayoutOrder = 2,
-        Size = UDim2.new(1, 0, 0, 94),
-        PlaceholderText = "Select property",
-        Value = CopyPropertyText,
-        Options = CopyOptions,
-        Active = States.IsEmittable,
+    local PropertyRowsHost = Scope:New("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+
+        [Seam.Children] = {
+            Scope:New("UIListLayout", {
+                Padding = UDim.new(0, 4),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+            }),
+        },
     })
 
-    local CopyPasteButtons = CreateRow(Scope, 4)
-    Scope:New(Jian.TextButton, {
-        Parent = CopyPasteButtons,
-        Text = "Copy",
-        Active = HasSingleSelection,
-        Size = UDim2.fromScale(0.48, 1),
-        [Seam.OnEvent("Activated")] = function()
-            local SelectedInstances = States.CurrentlySelected.Value
+    local PropertyRowInstances = {}
+    local PropertyRowConnections = {}
 
-            if #SelectedInstances == 0 then
-                return
-            end
+    local function ClearPropertyRows()
+        for _, connection in PropertyRowConnections do
+            connection:Disconnect()
+        end
+        table.clear(PropertyRowConnections)
 
-            local FirstInstance = SelectedInstances[1]
+        for _, row in PropertyRowInstances do
+            row:Destroy()
+        end
+        table.clear(PropertyRowInstances)
+    end
 
-            local SelectedProperty = CopyPropertyText.Value
-            local Success, Value = pcall(function()
-                return FirstInstance[SelectedProperty]
+    local function CreateSplitNumericInputs(parent, position, size, placeholders, getNumbers, applyNumbers, instance, property)
+        local Count = #placeholders
+        local GapDeduction = math.ceil(4 * (Count - 1) / Count)
+        local Host = Scope:New("Frame", {
+            Parent = parent,
+            Position = position,
+            Size = size,
+            BackgroundTransparency = 1,
+
+            [Seam.Children] = {
+                Scope:New("UIListLayout", {
+                    FillDirection = Enum.FillDirection.Horizontal,
+                    Padding = UDim.new(0, 4),
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    VerticalAlignment = Enum.VerticalAlignment.Center,
+                }),
+            },
+        })
+
+        local Numbers = getNumbers()
+        local FieldStates = {}
+        local FocusedCount = 0
+
+        for index, placeholder in placeholders do
+            local FieldState = Scope:Value(tostring(Numbers[index] or 0))
+            FieldStates[index] = FieldState
+
+            local Box = CreateBoundTextBox(
+                Scope,
+                Host,
+                FieldState,
+                true,
+                placeholder,
+                UDim2.fromOffset(0, 0),
+                UDim2.new(1 / Count, -GapDeduction, 1, -4)
+            )
+            Box.LayoutOrder = index
+
+            Scope:AddObject(Box.Focused:Connect(function()
+                FocusedCount += 1
+            end))
+
+            Scope:AddObject(Box.FocusLost:Connect(function()
+                FocusedCount = math.max(FocusedCount - 1, 0)
+
+                local Parsed = {}
+                for fieldIndex, fieldState in FieldStates do
+                    local Number = tonumber(fieldState.Value)
+                    if not Number then
+                        local Latest = getNumbers()
+                        for resetIndex, resetState in FieldStates do
+                            resetState.Value = tostring(Latest[resetIndex] or 0)
+                        end
+                        return
+                    end
+
+                    Parsed[fieldIndex] = Number
+                end
+
+                applyNumbers(Parsed)
+            end))
+        end
+
+        local SignalSuccess, ChangedSignal = pcall(function()
+            return instance:GetPropertyChangedSignal(property)
+        end)
+        if SignalSuccess then
+            table.insert(PropertyRowConnections, ChangedSignal:Connect(function()
+                if FocusedCount > 0 then
+                    return
+                end
+
+                local Latest = getNumbers()
+                for index, fieldState in FieldStates do
+                    fieldState.Value = tostring(Latest[index] or 0)
+                end
+            end))
+        end
+    end
+
+    local function GetPreviewNumberSequence(instance, property)
+        local ReadSuccess, Value = pcall(function()
+            return instance[property]
+        end)
+        if ReadSuccess and typeof(Value) == "NumberSequence" then
+            return Value
+        end
+
+        local EncodedPoints = instance:GetAttribute(CurveAttributeName(property))
+        local EncodedMinRange = instance:GetAttribute(CurveRangeAttributeName(property, "MinRange"))
+        local EncodedMaxRange = instance:GetAttribute(CurveRangeAttributeName(property, "MaxRange"))
+        if typeof(EncodedPoints) == "string" then
+            local DecodeSuccess, Decoded = pcall(function()
+                return HttpService:JSONDecode(EncodedPoints)
             end)
-
-            if Success then
-                CopiedValue.Value = Value
-                CopyPropertyText.Value = SelectedProperty
+            if DecodeSuccess and typeof(Decoded) == "table" and #Decoded >= 2 then
+                local MinRange = tonumber(EncodedMinRange) or 0
+                local MaxRange = tonumber(EncodedMaxRange) or 1
+                return EffectOps.BuildNumberSequenceFromCurve(Decoded, MinRange, MaxRange)
             end
-        end,
-    })
+        end
 
-    Scope:New(Jian.TextButton, {
-        Parent = CopyPasteButtons,
-        Text = "Paste",
-        Active = States.IsEmittable,
-        Position = UDim2.fromScale(0.52, 0),
-        Size = UDim2.fromScale(0.48, 1),
-        [Seam.OnEvent("Activated")] = function()
-            local SelectedInstances = States.CurrentlySelected.Value
-            local SelectedProperty = CopyPropertyText.Value
+        return NumberSequence.new(0.5)
+    end
+
+    local function GetPreviewColorSequence(instance)
+        if HasColorSequence(instance) then
+            return instance.Color
+        end
+
+        local EncodedPoints = instance:GetAttribute(COLOR_SEQUENCE_ATTRIBUTE)
+        if typeof(EncodedPoints) == "string" then
+            local DecodeSuccess, Decoded = pcall(function()
+                return HttpService:JSONDecode(EncodedPoints)
+            end)
+            if DecodeSuccess and typeof(Decoded) == "table" then
+                return EffectOps.BuildColorSequenceFromOklabPoints(Decoded)
+            end
+        end
+
+        local ColorSuccess, Color = pcall(function()
+            return instance.Color
+        end)
+        if ColorSuccess and typeof(Color) == "Color3" then
+            return ColorSequence.new(Color)
+        end
+
+        return ColorSequence.new(Color3.new(1, 1, 1))
+    end
+
+    local function UpdateCurvePreview(previewRoot, sequence)
+        local Path = previewRoot:FindFirstChild("CurvePath")
+        local Gradient = previewRoot:FindFirstChildWhichIsA("UIGradient")
+        if typeof(sequence) ~= "NumberSequence" then
+            return
+        end
+
+        local MinValue, MaxValue = GetNumberSequenceRange(sequence)
+        local ValueRange = MaxValue - MinValue
+        local ControlPoints = {}
+        local ColorKeys = {}
+
+        for index = 0, CURVE_PREVIEW_LINE_SAMPLES do
+            local Time = index / CURVE_PREVIEW_LINE_SAMPLES
+            local Value = SampleNumberSequence(sequence, Time)
+            local Alpha = math.clamp((Value - MinValue) / ValueRange, 0, 1)
+            table.insert(ControlPoints, { Time = Time, Alpha = Alpha })
+        end
+
+        for index = 0, CURVE_PREVIEW_GRADIENT_SAMPLES do
+            local Time = index / CURVE_PREVIEW_GRADIENT_SAMPLES
+            local Value = SampleNumberSequence(sequence, Time)
+            local Alpha = math.clamp((Value - MinValue) / ValueRange, 0, 1)
+            table.insert(ColorKeys, ColorSequenceKeypoint.new(Time, Color3.fromRGB(Alpha * 220 + 35, Alpha * 220 + 35, Alpha * 230 + 25)))
+        end
+
+        if Path then
+            local PathPoints = {}
+            local PathSuccess = pcall(function()
+                for _, sample in ControlPoints do
+                    table.insert(PathPoints, Path2DControlPoint.new(UDim2.fromScale(sample.Time, 1 - sample.Alpha)))
+                end
+                Path.Closed = false
+                Path:SetControlPoints(PathPoints)
+            end)
+            Path.Visible = PathSuccess
+        end
+
+        if Gradient then
+            pcall(function()
+                Gradient.Color = ColorSequence.new(ColorKeys)
+            end)
+        end
+    end
+
+    local function CreateSequencePreviewButton(parent, size, isColorSequence, instance, property, callback)
+        local Button = Scope:New("TextButton", {
+            Parent = parent,
+            Position = UDim2.new(0.28, 0, 0, 4),
+            Size = UDim2.new(size.X.Scale, size.X.Offset, 1, -8),
+            BackgroundColor3 = if isColorSequence then Color3.new(1, 1, 1) else Color3.fromRGB(28, 28, 32),
+            BorderSizePixel = 0,
+            Text = "",
+            AutoButtonColor = false,
+            [Seam.OnEvent("Activated")] = callback,
+        })
+
+        Scope:New("UICorner", {
+            Parent = Button,
+            CornerRadius = UDim.new(0, 6),
+        })
+        Scope:New("UIStroke", {
+            Parent = Button,
+            Color = Color3.fromRGB(56, 56, 56),
+            Thickness = 1,
+        })
+
+        local Gradient = Scope:New("UIGradient", {
+            Parent = Button,
+        })
+
+        if not isColorSequence then
+            pcall(function()
+                local Path = Instance.new("Path2D")
+                Path.Name = "CurvePath"
+                Path.Thickness = 1.5
+                Path.Color3 = Color3.fromRGB(186, 214, 255)
+                Path.ZIndex = 2
+                Path.Closed = false
+                Path.Parent = Button
+            end)
+        end
+
+        local function RefreshPreview()
+            if isColorSequence then
+                Gradient.Color = GetPreviewColorSequence(instance)
+            else
+                UpdateCurvePreview(Button, GetPreviewNumberSequence(instance, property))
+            end
+        end
+
+        RefreshPreview()
+
+        local SignalSuccess, ChangedSignal = pcall(function()
+            return instance:GetPropertyChangedSignal(property)
+        end)
+        if SignalSuccess then
+            table.insert(PropertyRowConnections, ChangedSignal:Connect(RefreshPreview))
+        end
+
+        table.insert(PropertyRowConnections, instance.AttributeChanged:Connect(function()
+            RefreshPreview()
+        end))
+
+        return Button
+    end
+
+    local function ReadInstanceCFrame(instance, property)
+        local ReadSuccess, Value = pcall(function()
+            return instance[property]
+        end)
+        if ReadSuccess and typeof(Value) == "CFrame" then
+            return Value
+        end
+
+        return CFrame.new()
+    end
+
+    local function GetCFrameComponentVector(instance, property, kind)
+        local Current = ReadInstanceCFrame(instance, property)
+        if kind == "Orientation" then
+            return GetCFrameOrientationDegrees(Current)
+        end
+
+        return Current.Position
+    end
+
+    local function ApplyCFrameComponentVector(property, kind, vector)
+        for _, target in GetPropertyEditTargets() do
+            pcall(function()
+                local Current = ReadInstanceCFrame(target, property)
+                if kind == "Orientation" then
+                    target[property] = CFrameFromPositionAndOrientation(Current.Position, vector)
+                else
+                    target[property] = CFrameFromPositionAndOrientation(vector, GetCFrameOrientationDegrees(Current))
+                end
+            end)
+        end
+    end
+
+    local function CreateInspectorPropertyRow(instance, property : string, layoutOrder : number, displayName : string?, cframeKind : string?)
+        local Row = CreateRow(Scope, layoutOrder)
+        Row.Parent = PropertyRowsHost
+
+        local IconClusterWidth = GetPropertyIconClusterWidth()
+        local ValueSize = UDim2.new(0.72, -IconClusterWidth - 4, 1, 0)
+
+        Scope:New(Jian.Text, {
+            Parent = Row,
+            Text = displayName or property,
+            Size = UDim2.new(0.28, -4, 1, 0),
+            AutomaticSize = Enum.AutomaticSize.None,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            ClipsDescendants = true,
+        })
+
+        local Success, CurrentValue = pcall(function()
+            return instance[property]
+        end)
+        local ValueType = if Success then typeof(CurrentValue) else nil
+        local IsColorSequence = PropertyMaps.IsColorSequenceProperty(instance, property) or ValueType == "ColorSequence"
+        local IsCurve = (not IsColorSequence) and (PropertyMaps.IsCurveProperty(instance, property) or ValueType == "NumberSequence")
+
+        if IsCurve or IsColorSequence then
+            CreateSequencePreviewButton(Row, ValueSize, IsColorSequence, instance, property, function()
+                if IsColorSequence then
+                    OpenColorSequenceEditor()
+                else
+                    OpenCurveEditor(property)
+                end
+            end)
+        elseif ValueType == "boolean" then
+            local BoolState = Scope:Value(CurrentValue == true)
+            local IsSyncing = false
+
+            Scope:New(Jian.Checkbox, {
+                Parent = Row,
+                Position = UDim2.new(0.28, 0, 0, 8),
+                Size = UDim2.new(ValueSize.X.Scale, ValueSize.X.Offset, 0, 20),
+                Title = "",
+                Active = true,
+                Value = BoolState,
+            })
+
+            Scope:AddObject(Seam.OnChanged(BoolState, function()
+                if IsSyncing then
+                    return
+                end
+
+                for _, target in GetPropertyEditTargets() do
+                    pcall(function()
+                        target[property] = BoolState.Value
+                    end)
+                end
+            end))
+
+            local SignalSuccess, ChangedSignal = pcall(function()
+                return instance:GetPropertyChangedSignal(property)
+            end)
+            if SignalSuccess then
+                table.insert(PropertyRowConnections, ChangedSignal:Connect(function()
+                    local ValueSuccess, Value = pcall(function()
+                        return instance[property]
+                    end)
+                    if not ValueSuccess or Value == BoolState.Value then
+                        return
+                    end
+
+                    IsSyncing = true
+                    BoolState.Value = Value == true
+                    IsSyncing = false
+                end))
+            end
+        elseif ValueType == "Vector3" or cframeKind ~= nil then
+            CreateSplitNumericInputs(
+                Row,
+                UDim2.new(0.28, 0, 0, 0),
+                ValueSize,
+                { "X", "Y", "Z" },
+                function()
+                    if cframeKind then
+                        local Vector = GetCFrameComponentVector(instance, property, cframeKind)
+                        return { Vector.X, Vector.Y, Vector.Z }
+                    end
+
+                    local LatestSuccess, LatestValue = pcall(function()
+                        return instance[property]
+                    end)
+                    if LatestSuccess and typeof(LatestValue) == "Vector3" then
+                        return { LatestValue.X, LatestValue.Y, LatestValue.Z }
+                    end
+
+                    return { 0, 0, 0 }
+                end,
+                function(numbers)
+                    local Value = Vector3.new(numbers[1], numbers[2], numbers[3])
+                    if cframeKind then
+                        ApplyCFrameComponentVector(property, cframeKind, Value)
+                        return
+                    end
+
+                    for _, target in GetPropertyEditTargets() do
+                        pcall(function()
+                            target[property] = Value
+                        end)
+                    end
+                end,
+                instance,
+                property
+            )
+        elseif ValueType == "NumberRange" then
+            CreateSplitNumericInputs(
+                Row,
+                UDim2.new(0.28, 0, 0, 0),
+                ValueSize,
+                { "Min", "Max" },
+                function()
+                    local LatestSuccess, LatestValue = pcall(function()
+                        return instance[property]
+                    end)
+                    if LatestSuccess and typeof(LatestValue) == "NumberRange" then
+                        return { LatestValue.Min, LatestValue.Max }
+                    end
+
+                    return { 0, 0 }
+                end,
+                function(numbers)
+                    local MinValue = numbers[1]
+                    local MaxValue = numbers[2]
+                    if MinValue > MaxValue then
+                        MinValue, MaxValue = MaxValue, MinValue
+                    end
+
+                    local Value = NumberRange.new(MinValue, MaxValue)
+                    for _, target in GetPropertyEditTargets() do
+                        pcall(function()
+                            target[property] = Value
+                        end)
+                    end
+                end,
+                instance,
+                property
+            )
+        elseif ValueType == "EnumItem" then
+            local EnumState = Scope:Value(CurrentValue.Name)
+            local EnumOptions = GetEnumItemNames(CurrentValue)
+            local IsSyncing = false
+            local DropdownHost = Scope:New("Frame", {
+                Parent = Row,
+                Position = UDim2.new(0.28, 0, 0, 0),
+                Size = ValueSize,
+                BackgroundTransparency = 1,
+                ClipsDescendants = false,
+                ZIndex = 40,
+            })
+
+            Scope:New(Dropdown, {
+                Parent = DropdownHost,
+                Value = EnumState,
+                Options = EnumOptions,
+                Active = true,
+            })
+
+            Scope:AddObject(Seam.OnChanged(EnumState, function()
+                if IsSyncing then
+                    return
+                end
+
+                local ItemSuccess, Item = pcall(function()
+                    return CurrentValue.EnumType[EnumState.Value]
+                end)
+                if not ItemSuccess or typeof(Item) ~= "EnumItem" then
+                    return
+                end
+
+                for _, target in GetPropertyEditTargets() do
+                    pcall(function()
+                        target[property] = Item
+                    end)
+                end
+            end))
+
+            local SignalSuccess, ChangedSignal = pcall(function()
+                return instance:GetPropertyChangedSignal(property)
+            end)
+            if SignalSuccess then
+                table.insert(PropertyRowConnections, ChangedSignal:Connect(function()
+                    local ValueSuccess, Value = pcall(function()
+                        return instance[property]
+                    end)
+                    if not ValueSuccess or typeof(Value) ~= "EnumItem" or Value.Name == EnumState.Value then
+                        return
+                    end
+
+                    IsSyncing = true
+                    EnumState.Value = Value.Name
+                    IsSyncing = false
+                end))
+            end
+        else
+            local TextState = Scope:Value(if Success then FormatPropertyValue(CurrentValue) else "")
+            local IsFocused = false
+
+            local TextBox = CreateBoundTextBox(
+                Scope,
+                Row,
+                TextState,
+                true,
+                property,
+                UDim2.new(0.28, 0, 0, 0),
+                ValueSize
+            )
+
+            Scope:AddObject(TextBox.Focused:Connect(function()
+                IsFocused = true
+            end))
+
+            Scope:AddObject(TextBox.FocusLost:Connect(function()
+                IsFocused = false
+
+                local LatestSuccess, LatestValue = pcall(function()
+                    return instance[property]
+                end)
+                if not LatestSuccess then
+                    return
+                end
+
+                local Parsed = ParsePropertyValue(LatestValue, TextState.Value)
+                if Parsed == nil then
+                    TextState.Value = FormatPropertyValue(LatestValue)
+                    return
+                end
+
+                for _, target in GetPropertyEditTargets() do
+                    pcall(function()
+                        target[property] = Parsed
+                    end)
+                end
+            end))
+
+            local SignalSuccess, ChangedSignal = pcall(function()
+                return instance:GetPropertyChangedSignal(property)
+            end)
+            if SignalSuccess then
+                table.insert(PropertyRowConnections, ChangedSignal:Connect(function()
+                    if IsFocused then
+                        return
+                    end
+
+                    local ValueSuccess, Value = pcall(function()
+                        return instance[property]
+                    end)
+                    if ValueSuccess then
+                        TextState.Value = FormatPropertyValue(Value)
+                    end
+                end))
+            end
+        end
+
+        CreatePropertyIconButton(Scope, Row, COPY_BUTTON_IMAGE_ID, -IconClusterWidth, function()
+            local CopySuccess, Value = pcall(function()
+                if cframeKind then
+                    return GetCFrameComponentVector(instance, property, cframeKind)
+                end
+
+                return instance[property]
+            end)
+            if CopySuccess then
+                CopiedValue.Value = Value
+            end
+        end)
+
+        CreatePropertyIconButton(Scope, Row, PASTE_BUTTON_IMAGE_ID, -PROPERTY_ICON_BUTTON_SIZE, function()
             local Value = CopiedValue.Value
-
             if Value == nil then
                 return
             end
 
-            for _, instance in SelectedInstances do
+            if cframeKind then
+                if typeof(Value) == "CFrame" then
+                    Value = if cframeKind == "Orientation" then GetCFrameOrientationDegrees(Value) else Value.Position
+                end
+
+                if typeof(Value) == "Vector3" then
+                    ApplyCFrameComponentVector(property, cframeKind, Value)
+                end
+
+                return
+            end
+
+            for _, target in GetPropertyEditTargets() do
                 pcall(function()
-                    instance[SelectedProperty] = Value
+                    target[property] = Value
                 end)
             end
-        end,
-    })
+        end)
+
+        return Row
+    end
+
+    local function RefreshPropertyInspector()
+        ClearPropertyRows()
+
+        local Inspected = GetInspectedInstance()
+        if not Inspected then
+            return
+        end
+
+        local LayoutOrder = 0
+        for _, property in PropertyMaps.GetInspectorProperties(Inspected) do
+            local ReadSuccess, Value = pcall(function()
+                return Inspected[property]
+            end)
+
+            if ReadSuccess and typeof(Value) == "CFrame" then
+                LayoutOrder += 1
+                table.insert(PropertyRowInstances, CreateInspectorPropertyRow(
+                    Inspected,
+                    property,
+                    LayoutOrder,
+                    GetCFrameComponentLabel(property, "Position"),
+                    "Position"
+                ))
+                LayoutOrder += 1
+                table.insert(PropertyRowInstances, CreateInspectorPropertyRow(
+                    Inspected,
+                    property,
+                    LayoutOrder,
+                    GetCFrameComponentLabel(property, "Orientation"),
+                    "Orientation"
+                ))
+            else
+                LayoutOrder += 1
+                table.insert(PropertyRowInstances, CreateInspectorPropertyRow(Inspected, property, LayoutOrder))
+            end
+        end
+    end
+
+    Scope:AddObject(Seam.OnChanged(States.RawSelection, RefreshPropertyInspector))
+    RefreshPropertyInspector()
 
     local ResizeMultiplierSlider = Scope:New(SliderInput, {
         LayoutOrder = 2,
@@ -1621,23 +2652,33 @@ function Interface:Init() : DockWidgetPluginGui
         RunMathOperation("divide")
     end)
 
-    local CurvePropertyDropdown = Scope:New(Dropdown, {
-        LayoutOrder = 2,
-        Size = UDim2.new(1, 0, 0, 94),
-        PlaceholderText = "Curve property",
-        Value = CurvePropertyText,
-        Options = CurveOptions,
-        Active = States.IsEmittable,
+    Scope:New(Jian.Text, {
+        Parent = CurveEditorContainer,
+        LayoutOrder = 1,
+        Text = Scope:Computed(function(use)
+            local Property = use(CurvePropertyText)
+            if Property == "" then
+                return "Select a curve property from Core"
+            end
+
+            return "Editing " .. Property
+        end),
+        Size = UDim2.new(1, 0, 0, 22),
+        AutomaticSize = Enum.AutomaticSize.None,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
     })
 
-    local CurveEditorWidget = Scope:New(CurveEditor, {
-        LayoutOrder = 3,
+    local CurveEditorView = Scope:New(CurveEditor, {
+        Parent = CurveEditorContainer,
+        LayoutOrder = 2,
         Size = UDim2.new(1, 0, 0, 180),
         Points = CurvePoints,
         Active = States.IsEmittable,
     })
 
-        local CurveMinRangeRow = CreateRow(Scope, 4)
+    local CurveMinRangeRow = CreateRow(Scope, 3)
+    CurveMinRangeRow.Parent = CurveEditorContainer
     CreateLabel(Scope, CurveMinRangeRow, "Range Min")
     CreateBoundTextBox(
         Scope,
@@ -1649,7 +2690,8 @@ function Interface:Init() : DockWidgetPluginGui
         UDim2.fromScale(0.65, 1)
     )
 
-    local CurveMaxRangeRow = CreateRow(Scope, 5)
+    local CurveMaxRangeRow = CreateRow(Scope, 4)
+    CurveMaxRangeRow.Parent = CurveEditorContainer
     CreateLabel(Scope, CurveMaxRangeRow, "Range Max")
     CreateBoundTextBox(
         Scope,
@@ -1661,7 +2703,7 @@ function Interface:Init() : DockWidgetPluginGui
         UDim2.fromScale(0.65, 1)
     )
 
-    local CurveApplyButton = CreateActionButton(Scope, 6, "Apply Curve", States.IsEmittable, function()
+    local CurveApplyButton = CreateActionButton(Scope, 5, "Apply Curve", States.IsEmittable, function()
         local SelectedProperty = CurvePropertyText.Value
         local MinRange = tonumber(CurveMinRangeText.Value)
         local MaxRange = tonumber(CurveMaxRangeText.Value)
@@ -1670,14 +2712,14 @@ function Interface:Init() : DockWidgetPluginGui
             return
         end
 
-                if not MinRange or not MaxRange or MinRange > MaxRange then
+        if not MinRange or not MaxRange or MinRange > MaxRange then
             return
         end
 
         local NewSequence = EffectOps.BuildNumberSequenceFromCurve(CurvePoints.Value, MinRange, MaxRange)
+        local EncodedPoints = HttpService:JSONEncode(CurvePoints.Value)
 
-                local EncodedPoints = HttpService:JSONEncode(CurvePoints.Value)
-        for _, instance in States.CurrentlySelected.Value do
+        for _, instance in GetPropertyEditTargets() do
             if instance:IsA("BasePart") then
                 PartAnimation.Ensure(instance, Bin)
                 instance:SetAttribute(CurveAttributeName(SelectedProperty), EncodedPoints)
@@ -1693,8 +2735,20 @@ function Interface:Init() : DockWidgetPluginGui
             end
         end
     end)
+    CurveApplyButton.Parent = CurveEditorContainer
 
-    local ColorSequenceEditorWidget = Scope:New(ColorSequenceEditor, {
+    Scope:New(Jian.Text, {
+        Parent = ColorSequenceContainer,
+        LayoutOrder = 1,
+        Text = "Editing Color",
+        Size = UDim2.new(1, 0, 0, 22),
+        AutomaticSize = Enum.AutomaticSize.None,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
+    })
+
+    local ColorSequenceEditorView = Scope:New(ColorSequenceEditor, {
+        Parent = ColorSequenceContainer,
         LayoutOrder = 2,
         Size = UDim2.new(1, 0, 0, 76),
         Points = ColorSequencePoints,
@@ -1714,7 +2768,7 @@ function Interface:Init() : DockWidgetPluginGui
         local NewSequence = EffectOps.BuildColorSequenceFromOklabPoints(ColorSequencePoints.Value)
         local EncodedPoints = HttpService:JSONEncode(ColorSequencePoints.Value)
 
-        for _, instance in States.CurrentlySelected.Value do
+        for _, instance in GetPropertyEditTargets() do
             if HasColorSequence(instance) then
                 pcall(function()
                     instance.Color = NewSequence
@@ -1726,6 +2780,7 @@ function Interface:Init() : DockWidgetPluginGui
             end
         end
     end)
+    ColorSequenceApplyButton.Parent = ColorSequenceContainer
 
     local CreateBezierAnimationButton = CreateActionButton(Scope, 2, "Create Bezier Animation", HasRawSelection, function()
         local SelectedInstances = States.RawSelection.Value
@@ -1812,56 +2867,58 @@ function Interface:Init() : DockWidgetPluginGui
         Value = WorldSpaceAccelEnabled,
     })
 
-    local OpenAssetPresetsButton = CreateActionButton(Scope, 2, "Presets", true, function()
-        EnsureAssetBrowserInitialized()
-
-        if not SelectedAsset.Value then
-            if DefaultSelectedAsset then
-                SelectedAsset.Value = DefaultSelectedAsset
-                RefreshSelectedAssetPreview()
-            end
-        end
-
-        AssetWidget.Enabled = not AssetWidget.Enabled
-    end)
-
-    Scope:New(Jian.ListSection, {
+    local ConfigurablePanel = Scope:New("Frame", {
         Parent = Container,
         LayoutOrder = 1,
-        Text = "Core Properties",
-        Active = true,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Visible = HasConfigurableSelection,
 
         [Seam.Children] = {
-            CoreEmitCountRow,
-            CoreEmitDelayRow,
-            CoreEmitDurationRow,
+            Scope:New("UIListLayout", {
+                Padding = UDim.new(0, 8),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+            }),
         },
     })
+
     Scope:New(Jian.ListSection, {
-        Parent = Container,
-        LayoutOrder = 2,
-        Text = "Emit Actions",
+        Parent = ConfigurablePanel,
+        LayoutOrder = 1,
+        Text = "Emit",
         Active = true,
 
         [Seam.Children] = {
-            EmitButton,
+            EmitAttributesRow,
             RepeatRow,
+            EmitButton,
         },
     })
-    Scope:New(Jian.ListSection, {
-        Parent = Container,
-        LayoutOrder = 3,
-        Text = "Copy/Paste Properties",
-        Active = true,
-
-        [Seam.Children] = {
-            CopyPropertyDropdown,
-            CopyPasteButtons,
-        },
+    Scope:New(Jian.Text, {
+        Parent = ConfigurablePanel,
+        LayoutOrder = 2,
+        Text = "Properties",
+        Size = UDim2.new(1, 0, 0, 18),
+        AutomaticSize = Enum.AutomaticSize.None,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
     })
-    Scope:New(Jian.ListSection, {
-        Parent = Container,
+    PropertyRowsHost.Parent = ConfigurablePanel
+    PropertyRowsHost.LayoutOrder = 3
+    Scope:New(Jian.Text, {
+        Parent = ConfigurablePanel,
         LayoutOrder = 4,
+        Text = OTHER_TOOLS_HINT,
+        Size = UDim2.new(1, 0, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
+    })
+
+    Scope:New(Jian.ListSection, {
+        Parent = EditingContainer,
+        LayoutOrder = 1,
         Text = "Resize",
         Active = true,
 
@@ -1871,8 +2928,8 @@ function Interface:Init() : DockWidgetPluginGui
         },
     })
     Scope:New(Jian.ListSection, {
-        Parent = Container,
-        LayoutOrder = 5,
+        Parent = EditingContainer,
+        LayoutOrder = 2,
         Text = "Math Operations",
         Active = true,
 
@@ -1886,56 +2943,62 @@ function Interface:Init() : DockWidgetPluginGui
         },
     })
     Scope:New(Jian.ListSection, {
-        Parent = Container,
-        LayoutOrder = 6,
-        Text = "Curve Editor",
+        Parent = EditingContainer,
+        LayoutOrder = 3,
+        Text = "Preview paths",
         Active = true,
 
         [Seam.Children] = {
-            CurvePropertyDropdown,
-            CurveEditorWidget,
-                        CurveMinRangeRow,
-            CurveMaxRangeRow,
-            CurveApplyButton,
+            PreviewPathsCheckboxRow,
         },
     })
-    Scope:New(Jian.ListSection, {
-        Parent = Container,
-        LayoutOrder = 7,
-        Text = "Color Sequence",
-        Active = true,
 
-        [Seam.Children] = {
-            ColorSequenceEditorWidget,
-            ColorSequenceApplyButton,
-        },
-    })
     Scope:New(Jian.ListSection, {
-        Parent = Container,
-        LayoutOrder = 8,
-        Text = "Assets",
-        Active = true,
-
-        [Seam.Children] = {
-            OpenAssetPresetsButton,
-        },
-    })
-    Scope:New(Jian.ListSection, {
-        Parent = Container,
-        LayoutOrder = 9,
-        Text = "Advanced",
+        Parent = AdvancedContainer,
+        LayoutOrder = 1,
+        Text = "Animation",
         Active = true,
 
         [Seam.Children] = {
             CreateBezierAnimationButton,
             CreateTweenAnimationButton,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = AdvancedContainer,
+        LayoutOrder = 2,
+        Text = "Programming",
+        Active = true,
+
+        [Seam.Children] = {
             InsertPlayEffectModuleButton,
             InsertEffectModuleTemplateButton,
-            PreviewPathsCheckboxRow,
             InjectApiCheckboxRow,
+        },
+    })
+    Scope:New(Jian.ListSection, {
+        Parent = AdvancedContainer,
+        LayoutOrder = 3,
+        Text = "Behavior",
+        Active = true,
+
+        [Seam.Children] = {
             WorldSpaceAccelCheckboxRow,
         },
     })
+
+    Scope:AddObject(AssetWidget:GetPropertyChangedSignal("Enabled"):Connect(function()
+        if not AssetWidget.Enabled then
+            return
+        end
+
+        EnsureAssetBrowserInitialized()
+
+        if not SelectedAsset.Value and DefaultSelectedAsset then
+            SelectedAsset.Value = DefaultSelectedAsset
+            RefreshSelectedAssetPreview()
+        end
+    end))
 
     local function RefreshWorldSpaceAccelCheckbox()
         IsSyncingWorldSpaceAccel = true
@@ -1999,16 +3062,6 @@ function Interface:Init() : DockWidgetPluginGui
         end
     end))
 
-    local InitialCopyOptions = CopyOptions.Value
-    if #InitialCopyOptions > 0 then
-        CopyPropertyText.Value = InitialCopyOptions[1]
-    end
-
-    local InitialCurveOptions = CurveOptions.Value
-    if #InitialCurveOptions > 0 then
-        CurvePropertyText.Value = InitialCurveOptions[1]
-    end
-
     EmitUtils:SetPathPreviewEnabled(PreviewPathsEnabled.Value)
     if InjectVfxApiEnabled.Value then
         VfxApiInjection.Enable(Bin)
@@ -2018,7 +3071,12 @@ function Interface:Init() : DockWidgetPluginGui
 
     EmitUtils:SetWidget(MainWidget)
 
-    return MainWidget
+    return {
+        Core = MainWidget,
+        Editing = EditingWidget,
+        Advanced = AdvancedWidget,
+        Presets = AssetWidget,
+    }
 end
 
 return Interface

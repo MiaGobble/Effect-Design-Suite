@@ -8,8 +8,29 @@ local ACCEPTABLE_INSTANCE_TYPES = {
     "Trail",
 }
 local TOOLBAR_NAME = "Effect Designer Suite"
-local TOOLBAR_BUTTON_NAME = "Open"
 local TOOLBAR_BUTTON_IMAGE = "rbxassetid://140043496156959"
+local TOOLBAR_BUTTONS = {
+    {
+        Key = "Core",
+        Name = "Core",
+        ToolTip = "Effect Designer Suite — Core",
+    },
+    {
+        Key = "Editing",
+        Name = "Editing",
+        ToolTip = "Effect Designer Suite — Editing",
+    },
+    {
+        Key = "Advanced",
+        Name = "Advanced",
+        ToolTip = "Effect Designer Suite — Advanced",
+    },
+    {
+        Key = "Presets",
+        Name = "Presets",
+        ToolTip = "Effect Designer Suite — Presets",
+    },
+}
 
 -- Services
 local SelectionService = game:GetService("Selection") :: Selection
@@ -29,12 +50,6 @@ local Scope = Seam.Scope(Seam)
 local ThisToolbar = Scope:New(Jian.Toolbar, {
     Name = TOOLBAR_NAME,
 })
-local MainButton = Scope:New(Jian.ToolbarButton, {
-    ToolTip = "",
-    Name = TOOLBAR_BUTTON_NAME,
-    Image = TOOLBAR_BUTTON_IMAGE,
-    Toolbar = ThisToolbar,
-}) :: PluginToolbarButton
 
 local function Init()
     if RunService:IsRunning() or RunService:IsRunMode() then -- Don't init if running in studio
@@ -43,11 +58,23 @@ local function Init()
 
     StateOutput:Init()
 
-    local Widget : DockWidgetPluginGui = Interface:Init()
+    local Widgets = Interface:Init()
 
-    MainButton.Click:Connect(function()
-        Widget.Enabled = not Widget.Enabled
-    end)
+    for _, buttonConfig in TOOLBAR_BUTTONS do
+        local Button = Scope:New(Jian.ToolbarButton, {
+            ToolTip = buttonConfig.ToolTip,
+            Name = buttonConfig.Name,
+            Image = TOOLBAR_BUTTON_IMAGE,
+            Toolbar = ThisToolbar,
+        }) :: PluginToolbarButton
+
+        Button.Click:Connect(function()
+            local Widget = Widgets[buttonConfig.Key]
+            if Widget then
+                Widget.Enabled = not Widget.Enabled
+            end
+        end)
+    end
 
     SelectionService.SelectionChanged:Connect(function()
         task.wait()
